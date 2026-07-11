@@ -284,8 +284,15 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .setbtns .addset.rm { flex:0 0 auto; padding:9px 16px; color:var(--coral);
   background:rgba(251,111,132,.12); border:1.5px solid rgba(251,111,132,.4); border-style:solid; }
 
-/* header allenamento stile scheda: durata / volume / serie */
-.wstats { display:flex; padding:12px 6px; }
+/* barra fissa dell'allenamento: resta in alto mentre scorri (durata/volume/serie + Finito) */
+.wbar { position:sticky; top:calc(6px + env(safe-area-inset-top)); z-index:20; margin-bottom:12px;
+  background:var(--surf); border:1px solid var(--hair); border-radius:16px; padding:12px 14px;
+  box-shadow:0 8px 22px rgba(0,0,0,.4); }
+.wbar-top { display:flex; align-items:center; gap:10px; }
+.wbar-day { font-size:19px; font-weight:800; margin-top:2px; letter-spacing:-.01em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.finito { width:auto; flex:none; padding:11px 20px; font-size:15px; border-radius:12px; }
+.wstats { display:flex; margin-top:12px; }
 .wstats .ws { flex:1; text-align:center; }
 .wstats .ws + .ws { border-left:1px solid var(--hair); }
 .wstats .v { font-size:20px; font-weight:800; margin-top:5px; }
@@ -313,9 +320,24 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   font-size:20px; color:var(--mut2); font-weight:700; transition:color .1s, transform .1s; }
 .wheeli.on { color:var(--teal); font-size:26px; transform:scale(1.05); }
 
-/* sheet riordina */
-.reorow { display:flex; align-items:center; gap:11px; padding:11px 2px; border-bottom:1px solid var(--hair); }
-.reorow .ghost.mini { flex:0 0 auto; width:44px; padding:9px 0; }
+/* menu opzioni esercizio (bottom sheet con icone in stile app) */
+.menusheet { height:auto; max-height:86%; }
+.misvg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; display:block; }
+.menulist { display:flex; flex-direction:column; gap:9px; margin-top:4px; }
+.menurow { display:flex; align-items:center; gap:13px; width:100%; justify-content:flex-start; text-align:left;
+  padding:13px 14px; background:var(--surf); color:var(--chalk); border:1px solid var(--hair); border-radius:14px;
+  font-weight:600; font-size:15.5px; font-family:var(--sans); }
+.menurow .mi { width:38px; height:38px; flex:none; border-radius:11px; background:var(--surf2); color:var(--mut);
+  display:flex; align-items:center; justify-content:center; }
+.menurow.on { border-color:rgba(49,224,180,.45); background:rgba(49,224,180,.09); color:var(--teal); }
+.menurow.on .mi { background:rgba(49,224,180,.18); color:var(--teal); }
+
+/* riordino a trascinamento */
+.reobox { position:relative; touch-action:none; margin:6px 0; }
+.reorow { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 4px;
+  border-radius:13px; background:var(--surf); transition:transform .16s ease; }
+.reorow.dragging { transition:none; z-index:3; background:var(--surf2); box-shadow:0 10px 26px rgba(0,0,0,.55); }
+.draghandle { flex:none; padding:14px 10px; color:var(--mut2); font-size:22px; line-height:1; cursor:grab; touch-action:none; }
 .seg .sg svg { margin:0 auto; }
 
 /* ============ impostazioni ============ */

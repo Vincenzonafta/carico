@@ -53,6 +53,16 @@ const Gear = ({ size = 20 }: { size?: number }) => (
   </svg>
 )
 
+// Icone del menu esercizio: stroke pulito, stesso stile di Icon/Gear
+const MenuIcon = ({ t }: { t: 'swap' | 'reorder' | 'link' }) => {
+  const p: Record<string, string[]> = {
+    swap: ['M16 3l4 4-4 4', 'M20 7H9', 'M8 21l-4-4 4-4', 'M4 17h11'],
+    reorder: ['M8 6v13', 'M5 9l3-3 3 3', 'M16 18V5', 'M13 15l3 3 3-3'],
+    link: ['M9 12h6', 'M9 8H7a4 4 0 0 0 0 8h2', 'M15 8h2a4 4 0 0 1 0 8h-2'],
+  }
+  return <svg viewBox="0 0 24 24" className="misvg">{p[t].map((d, i) => <path key={i} d={d} />)}</svg>
+}
+
 const LS = 'carico-v1'
 function load(): State {
   try {
@@ -643,6 +653,62 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
   )
 }
 
+// Riordino a trascinamento: tieni ≡ e sposta su/giù, gli altri scorrono
+function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: number[]) => void }) {
+  const ROW = 60
+  const [order, setOrder] = useState<number[]>(() => plan.map((_, i) => i))
+  const [drag, setDrag] = useState<{ pos: number; rel: number; top: number } | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const done = () => onDone(order)
+
+  const down = (e: React.PointerEvent, pos: number) => {
+    const top = box.current!.getBoundingClientRect().top
+    try { box.current!.setPointerCapture(e.pointerId) } catch { /* puntatore non catturabile */ }
+    setDrag({ pos, rel: e.clientY - top, top })
+  }
+  const move = (e: React.PointerEvent) => {
+    if (!drag) return
+    const rel = e.clientY - drag.top
+    const target = Math.max(0, Math.min(order.length - 1, Math.floor(rel / ROW)))
+    if (target !== drag.pos) {
+      const n = [...order]; const [m] = n.splice(drag.pos, 1); n.splice(target, 0, m)
+      setOrder(n)
+    }
+    setDrag({ ...drag, pos: target, rel })
+  }
+
+  return (
+    <div className="overlay" onClick={done}>
+      <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
+        <div className="bc" style={{ margin: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="crumb">Tieni ≡ e trascina</div>
+            <div className="bt1">Riordina esercizi</div>
+          </div>
+          <button className="pen" onClick={done}>✕</button>
+        </div>
+        <div className="reobox" ref={box} style={{ height: order.length * ROW }}
+          onPointerMove={move} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
+          {order.map((idx, pos) => {
+            const it = plan[idx]
+            const dragging = drag?.pos === pos
+            const y = dragging ? drag!.rel - ROW / 2 : pos * ROW
+            return (
+              <div key={idx} className={'reorow' + (dragging ? ' dragging' : '')}
+                style={{ transform: `translateY(${y}px)`, height: ROW }}>
+                <span className="exbar" style={{ background: mcolor(it.muscle) }} />
+                <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
+                <span className="draghandle" onPointerDown={(e) => down(e, pos)}>≡</span>
+              </div>
+            )
+          })}
+        </div>
+        <button onClick={done}>Fatto</button>
+      </div>
+    </div>
+  )
+}
+
 type Draft = { kg: string; reps: string; rpe: string }
 
 function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
@@ -694,13 +760,11 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
       : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === ex)
     if (t) { fn(t); setS(d) }
   }
-  const movePlan = (i: number, dir: number) => {
-    const j = i + dir
-    if (j < 0 || j >= plan.length) return
+  const applyOrder = (order: number[]) => {
     const d = structuredClone(s)
-    const a = d.schede[s.activeScheda].days[s.activeDay].items
-    ;[a[i], a[j]] = [a[j], a[i]]
-    setS(d)
+    const day2 = d.schede[s.activeScheda].days[s.activeDay]
+    day2.items = order.map((i) => day2.items[i])
+    setS(d); setReorder(false)
   }
   const toggleSuperset = (it: PlanItem) => { patchItem(it.ex, false, (t) => { t.ss = !t.ss }); setMenu(null) }
   const doSwap = (name: string) => {
@@ -795,6 +859,7 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
     if (idx >= 0) setS({ ...s, log: s.log.filter((_, j) => j !== idx) })
   }
   const finish = () => {
+    if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
     setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()) })
   }
 
@@ -812,20 +877,21 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
 
   return (
     <>
-      <div className="bc" style={{ marginBottom: 10 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="crumb">{curScheda(s)?.name} · allenamento</div>
-          <div className="bt1">{day?.name}</div>
+      <div className="wbar">
+        <div className="wbar-top">
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="crumb">{curScheda(s)?.name} · allenamento</div>
+            <div className="wbar-day">{day?.name}</div>
+          </div>
+          <button className="finito" onClick={finish}>Finito</button>
         </div>
-        <span className={'exprog num' + (totalDone >= totalPlanned ? ' ok' : '')}>{totalDone}/{totalPlanned}</span>
+        <div className="wstats">
+          <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? mmss(dur) : '—'}</div></div>
+          <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
+          <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
+        </div>
+        <div className="bt" style={{ height: 5, marginTop: 10 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
       </div>
-
-      <div className="wstats card">
-        <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? mmss(dur) : '—'}</div></div>
-        <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
-        <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
-      </div>
-      <div className="bt" style={{ height: 7, marginTop: 10 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
       <p className="hint num">✦ Pesi proposti dal coach · readiness <b>{r}</b> · ✓ conferma o correggi</p>
 
       {items.map((it, idx) => {
@@ -890,20 +956,31 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
       })}
 
       {menu && (
-        <div className="overlay center" onClick={() => setMenu(null)}>
-          <div className="dlg" onClick={(e) => e.stopPropagation()}>
-            <b className="dt">{menu.it.ex}</b>
-            <button className="ghost" style={{ marginTop: 14 }}
-              onClick={() => { setSwap({ ex: menu.it.ex, isExtra: menu.isExtra }); setMenu(null) }}>⇄ Sostituisci esercizio</button>
-            {!menu.isExtra && plan.length > 1 && (
-              <button className="ghost" style={{ marginTop: 8 }}
-                onClick={() => { setReorder(true); setMenu(null) }}>↕ Riordina esercizi</button>
-            )}
-            {!menu.isExtra && menu.idx < plan.length - 1 && (
-              <button className="ghost" style={{ marginTop: 8, color: menu.it.ss ? 'var(--teal)' : undefined }}
-                onClick={() => toggleSuperset(menu.it)}>⛓ {menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}</button>
-            )}
-            <button style={{ marginTop: 14 }} onClick={() => setMenu(null)}>Chiudi</button>
+        <div className="overlay" onClick={() => setMenu(null)}>
+          <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
+            <div className="bc" style={{ margin: 0 }}>
+              <span className="exbar" style={{ background: mcolor(menu.it.muscle), minHeight: 42 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="crumb" style={{ color: mcolor(menu.it.muscle) }}>{menu.it.muscle}</div>
+                <div className="bt1">{menu.it.ex}</div>
+              </div>
+              <button className="pen" onClick={() => setMenu(null)}>✕</button>
+            </div>
+            <div className="menulist">
+              <button className="menurow" onClick={() => { setSwap({ ex: menu.it.ex, isExtra: menu.isExtra }); setMenu(null) }}>
+                <span className="mi"><MenuIcon t="swap" /></span>Sostituisci esercizio
+              </button>
+              {!menu.isExtra && plan.length > 1 && (
+                <button className="menurow" onClick={() => { setReorder(true); setMenu(null) }}>
+                  <span className="mi"><MenuIcon t="reorder" /></span>Riordina esercizi
+                </button>
+              )}
+              {!menu.isExtra && menu.idx < plan.length - 1 && (
+                <button className={'menurow' + (menu.it.ss ? ' on' : '')} onClick={() => toggleSuperset(menu.it)}>
+                  <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -917,30 +994,7 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
         return <RestPicker value={it.rest} onClose={() => setRestPick(null)}
           onChange={(v) => patchItem(restPick.ex, restPick.isExtra, (t) => { t.rest = v })} />
       })()}
-      {reorder && (
-        <div className="overlay" onClick={() => setReorder(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="bc" style={{ margin: 0 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="crumb">Ordine del giorno</div>
-                <div className="bt1">Riordina esercizi</div>
-              </div>
-              <button className="pen" onClick={() => setReorder(false)}>✕</button>
-            </div>
-            <div className="plist">
-              {plan.map((it, i) => (
-                <div className="reorow" key={it.ex}>
-                  <span className="exbar" style={{ background: mcolor(it.muscle) }} />
-                  <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
-                  <button className="ghost mini" disabled={i === 0} onClick={() => movePlan(i, -1)}>↑</button>
-                  <button className="ghost mini" disabled={i === plan.length - 1} onClick={() => movePlan(i, 1)}>↓</button>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setReorder(false)}>Fatto</button>
-          </div>
-        </div>
-      )}
+      {reorder && <ReorderSheet plan={plan} onDone={applyOrder} />}
 
       <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
       {picker && (
@@ -949,9 +1003,6 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
       )}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
 
-      {anyToday && !summary && (
-        <button className="ghost" style={{ marginTop: 10 }} onClick={finish}>Termina sessione</button>
-      )}
       {summary && (
         <div className="card done">
           <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
