@@ -19,6 +19,7 @@ export type State = {
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; target: { kcal: number; protein: number }
   body: BodyLog[]; goal: Goal; water: Water[]
+  settings: { sound: boolean; vibrate: boolean }
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)
@@ -352,5 +353,6 @@ export function seed(): State {
     ],
     goal: { ex: 'Panca piana', targetKg: 110 },
     water: [{ date: today(), ml: 1500 }],
+    settings: { sound: true, vibrate: true },
   }
 }

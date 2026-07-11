@@ -17,7 +17,9 @@ body { background:var(--bg); color:var(--chalk); font-family:var(--sans); font-s
   text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
 input, textarea, select { -webkit-user-select:text; user-select:text; }
 
-#app { max-width:430px; margin:0 auto; padding:18px 16px calc(96px + env(safe-area-inset-bottom)); }
+/* safe area: nell'app installata il contenuto finirebbe sotto notch e barra gesture */
+#app { max-width:430px; margin:0 auto;
+  padding:calc(16px + env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom)); }
 .row > input, .row > select, .row > .efield { min-width:0; flex:1 1 0; }
 .row { display:flex; align-items:center; gap:10px; }
 .num { font-variant-numeric:tabular-nums; }
@@ -268,6 +270,17 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .cal .cd.today { outline:2px solid var(--lime); outline-offset:-2px; color:var(--lime); font-weight:800; }
 .cal .cd.sel { background:var(--lime); color:var(--lime-ink); font-weight:800; }
 .cal .cd.sel::after { background:var(--lime-ink); }
+
+/* ============ impostazioni ============ */
+.tog { width:50px; height:30px; flex:none; padding:3px; border-radius:999px;
+  background:var(--surf2); border:1px solid var(--hair); display:flex; justify-content:flex-start; }
+.tog i { width:22px; height:22px; border-radius:50%; background:var(--mut2); display:block;
+  transition:transform .15s ease, background .15s ease; }
+.tog.on { background:rgba(201,249,78,.2); border-color:var(--lime); }
+.tog.on i { transform:translateX(20px); background:var(--lime); }
+.numedit { width:100px; text-align:right; padding:9px 10px; flex:none; }
+.filebtn { display:block; text-align:center; margin-top:8px; padding:14px; border:1.5px solid var(--hair);
+  border-radius:13px; font-weight:600; font-size:16px; cursor:pointer; color:var(--chalk); }
 
 /* ============ profilo ============ */
 .flame { display:flex; align-items:baseline; gap:6px; }

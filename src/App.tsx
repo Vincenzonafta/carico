@@ -17,6 +17,33 @@ const MCOLOR: Record<string, string> = {
 }
 const mcolor = (m: string) => MCOLOR[m] ?? '#7E8A9A'
 
+// Audio fine recupero: il contesto va creato da un gesto utente (il ✓), poi riusato
+let actx: AudioContext | null = null
+const ensureAudio = () => { try { actx ??= new AudioContext(); if (actx.state === 'suspended') actx.resume() } catch { /* niente audio */ } }
+function beep() {
+  if (!actx) return
+  try {
+    const t = actx.currentTime
+    for (const [f, at] of [[880, 0], [1175, 0.22]] as const) {
+      const o = actx.createOscillator(), g = actx.createGain()
+      o.connect(g); g.connect(actx.destination)
+      o.frequency.value = f
+      g.gain.setValueAtTime(0.001, t + at)
+      g.gain.exponentialRampToValueAtTime(0.2, t + at + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.001, t + at + 0.3)
+      o.start(t + at); o.stop(t + at + 0.32)
+    }
+  } catch { /* niente audio */ }
+}
+
+// Evento install catturato a livello modulo: può arrivare prima del mount di React
+let installEvt: { prompt: () => void; userChoice: Promise<unknown> } | null = null
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  installEvt = e as unknown as typeof installEvt
+  window.dispatchEvent(new Event('carico-installable'))
+})
+
 const LS = 'carico-v1'
 function load(): State {
   try {
@@ -60,16 +87,21 @@ export default function App() {
   const [chronoOn, setChronoOn] = useState(false)
   useEffect(() => {
     if (timer == null) return
-    if (timer <= 0) { setTimer(null); navigator.vibrate?.(300); return }
+    if (timer <= 0) {
+      setTimer(null)
+      if (s.settings.vibrate) navigator.vibrate?.(300)
+      if (s.settings.sound) beep()
+      return
+    }
     const id = setTimeout(() => setTimer(timer - 1), 1000)
     return () => clearTimeout(id)
-  }, [timer])
+  }, [timer]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!chronoOn) return
     const id = setInterval(() => setChrono((c) => c + 1), 1000)
     return () => clearInterval(id)
   }, [chronoOn])
-  const startRest = (sec: number) => { setTimer(sec); setTotal(sec) }
+  const startRest = (sec: number) => { ensureAudio(); setTimer(sec); setTotal(sec) }
   const showTimer = tab === 'allena' || timer != null || chronoOn || chrono > 0
 
   const r = readiness(s.checkin)
@@ -611,6 +643,21 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
   const removeExtra = (ex: string) =>
     setS({ ...s, extras: s.extras.filter((e) => !(e.date === today() && e.item.ex === ex)) })
 
+  // Ingranaggio: ritocca l'esercizio al volo durante la seduta (recupero, serie, reps)
+  const editItem = async (it: PlanItem, isExtra: boolean) => {
+    const fields = [{ label: 'Recupero (sec)', value: String(it.rest) }]
+    if (!it.scheme) fields.push({ label: 'Serie', value: String(it.sets) }, { label: 'Ripetizioni', value: String(it.reps) })
+    const v = await promptDlg(it.ex, fields)
+    if (!v) return
+    const patch: Partial<PlanItem> = { rest: parseInt(v[0], 10) || it.rest }
+    if (!it.scheme) { patch.sets = parseInt(v[1], 10) || it.sets; patch.reps = parseInt(v[2], 10) || it.reps }
+    const d = structuredClone(s)
+    const target = isExtra
+      ? d.extras.find((e) => e.date === today() && e.item.ex === it.ex)?.item
+      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === it.ex)
+    if (target) { Object.assign(target, patch); setS(d) }
+  }
+
   const todayLog = s.log.filter((x) => x.date === today())
   const logOf = (ex: string) => todayLog.filter((x) => x.ex === ex)
   const anyToday = todayLog.length > 0
@@ -698,6 +745,7 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
                 {it.note && <div className="note">✎ {it.note}</div>}
               </div>
               <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+              <span className="del" onClick={() => editItem(it, isExtra)} title="Impostazioni esercizio">⚙</span>
               {isExtra && done === 0 && <span className="del" onClick={() => removeExtra(it.ex)}>✕</span>}
             </div>
             {sps.map((sp, i) => {
@@ -1065,7 +1113,7 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
   const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
   const first = s.body.length ? s.body[0].kg : cur
   const [w, setW] = useState('')
-  const [sub, setSub] = useState<'profilo' | 'stats' | 'cal'>('profilo')
+  const [sub, setSub] = useState<'profilo' | 'stats' | 'cal' | 'set'>('profilo')
   const [statsEx, setStatsEx] = useState<string | null>(null)
   useTop(sub)
   const goalCur = bestE1rm(s.log, s.goal.ex)
@@ -1092,13 +1140,14 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
   return (
     <>
       <div className="seg" style={{ marginTop: 4 }}>
-        {([['profilo', 'Profilo'], ['stats', 'Statistiche'], ['cal', 'Calendario']] as const).map(([k, l]) => (
+        {([['profilo', 'Profilo'], ['stats', 'Stats'], ['cal', 'Calend.'], ['set', '⚙']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>{l}</button>
         ))}
       </div>
 
       {sub === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
       {sub === 'cal' && <Calendario s={s} onRepeat={repeatDay} />}
+      {sub === 'set' && <Impostazioni s={s} setS={setS} />}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {sub !== 'profilo' ? null : (<>
       <h2>Progressi</h2>
@@ -1142,12 +1191,81 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
         <div className="bt" style={{ marginTop: 9 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
         <div className="meta num" style={{ marginTop: 8 }}>{fmt(goalCur)} di {s.goal.targetKg} kg · 1RM stimato attuale</div>
       </div>
+      </>)}
+    </>
+  )
+}
+
+const Tog = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => (
+  <button className={'tog' + (on ? ' on' : '')} onClick={() => set(!on)} aria-label={on ? 'Attivo' : 'Spento'}><i /></button>
+)
+
+function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
+  const lib = [...EXERCISES, ...s.customExercises]
+  const setOpt = (k: 'sound' | 'vibrate', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
+  const setTarget = (k: 'kcal' | 'protein', v: number) => setS({ ...s, target: { ...s.target, [k]: v } })
+  const editGoal = async () => {
+    const v = await promptDlg('Obiettivo', [
+      { label: 'Esercizio', options: lib.map((e) => e.name), value: s.goal.ex },
+      { label: 'Kg da raggiungere', value: String(s.goal.targetKg) },
+    ])
+    if (v) setS({ ...s, goal: { ex: v[0], targetKg: parseFloat(v[1].replace(',', '.')) || s.goal.targetKg } })
+  }
+  const doInstall = async () => {
+    if (installEvt) { installEvt.prompt(); await installEvt.userChoice; installEvt = null }
+    else toast(isStandalone() ? 'App già installata ✓'
+      : isIOS() ? 'Safari: Condividi ⇧ → "Aggiungi a Home"'
+      : 'Menu del browser (⋮) → "Installa app"')
+  }
+  const exportData = () => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' }))
+    a.download = `carico-backup-${today()}.json`
+    a.click(); URL.revokeObjectURL(a.href)
+  }
+  const importData = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return
+    f.text().then((t) => {
+      try {
+        const p = JSON.parse(t)
+        if (!p.schede) throw new Error('non valido')
+        setS({ ...seed(), ...p }); toast('Backup ripristinato ✓')
+      } catch { toast('File non valido: serve un backup di CARICO') }
+    })
+    e.target.value = ''
+  }
+  const reset = async () => {
+    if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(seed())
+  }
+  return (
+    <>
+      <h2>Allenamento</h2>
+      <div className="card">
+        <div className="mrow"><span>Suono a fine recupero</span><Tog on={s.settings.sound} set={(v) => setOpt('sound', v)} /></div>
+        <div className="mrow"><span>Vibrazione a fine recupero</span><Tog on={s.settings.vibrate} set={(v) => setOpt('vibrate', v)} /></div>
+      </div>
+      <h2>Obiettivo attivo</h2>
+      <div className="card">
+        <div className="mrow"><span>{s.goal.ex}</span><b className="num">{s.goal.targetKg} kg</b></div>
+        <button className="ghost" style={{ marginTop: 10 }} onClick={editGoal}>Cambia obiettivo</button>
+      </div>
       <h2>Target nutrizionale</h2>
       <div className="card">
-        <div className="mrow"><span>Calorie</span><b className="num">{s.target.kcal} kcal</b></div>
-        <div className="mrow"><span>Proteine</span><b className="num">{s.target.protein} g</b></div>
+        <div className="mrow"><span>Calorie (kcal)</span>
+          <input className="numedit" type="number" inputMode="numeric" value={s.target.kcal} onChange={(e) => setTarget('kcal', +e.target.value)} /></div>
+        <div className="mrow"><span>Proteine (g)</span>
+          <input className="numedit" type="number" inputMode="numeric" value={s.target.protein} onChange={(e) => setTarget('protein', +e.target.value)} /></div>
       </div>
-      </>)}
+      <h2>App</h2>
+      <div className="card">
+        <button className="ghost" onClick={doInstall}>⤓ Installa sulla schermata home</button>
+        <button className="ghost" style={{ marginTop: 8 }} onClick={exportData}>Esporta dati (backup)</button>
+        <label className="ghost filebtn">Importa backup
+          <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
+        </label>
+        <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
+      </div>
+      <p className="hint">I dati vivono solo su questo dispositivo: esporta un backup ogni tanto.</p>
     </>
   )
 }
@@ -1164,38 +1282,35 @@ function Icon({ t }: { t: Tab }) {
   return <svg viewBox="0 0 24 24">{paths[t].map((d, i) => <path key={i} d={d} />)}</svg>
 }
 
-// Banner "installa in home": usa beforeinstallprompt su Android/desktop, istruzioni manuali su iOS.
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && (navigator as { standalone?: boolean }).standalone === true)
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
+
+// Banner "installa in home": usa l'evento catturato a livello modulo, istruzioni manuali su iOS.
 function InstallPrompt() {
-  const [deferred, setDeferred] = useState<any>(null)
-  const [show, setShow] = useState(false)
-  const standalone = typeof matchMedia !== 'undefined' &&
-    (matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true)
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const [evt, setEvt] = useState(installEvt)
+  const [hidden, setHidden] = useState(false)
   useEffect(() => {
-    if (standalone || localStorage.getItem('carico-noinstall')) return
-    const onPrompt = (e: Event) => { e.preventDefault(); setDeferred(e); setShow(true) }
-    window.addEventListener('beforeinstallprompt', onPrompt)
-    if (isIOS) setShow(true) // iOS non emette l'evento: mostra le istruzioni manuali
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+    const on = () => setEvt(installEvt)
+    window.addEventListener('carico-installable', on)
+    return () => window.removeEventListener('carico-installable', on)
   }, [])
-  if (!show || standalone) return null
-  const close = () => { setShow(false); localStorage.setItem('carico-noinstall', '1') }
+  if (hidden || isStandalone() || localStorage.getItem('carico-noinstall') || (!evt && !isIOS())) return null
+  const close = () => { setHidden(true); localStorage.setItem('carico-noinstall', '1') }
   const install = async () => {
-    if (!deferred) return
-    deferred.prompt()
-    await deferred.userChoice
-    setDeferred(null); setShow(false)
+    if (!evt) return
+    evt.prompt()
+    await evt.userChoice
+    installEvt = null; setEvt(null)
   }
   return (
     <div className="installbar">
       <div className="ib-ico">⤓</div>
       <div className="ib-tx">
         <b>Installa CARICO</b>
-        <span>{deferred ? 'Aggiungila alla home: si apre a schermo intero.'
-          : isIOS ? 'Tocca Condividi ⇧ poi "Aggiungi a Home".'
-          : 'Menu del browser → "Installa app".'}</span>
+        <span>{evt ? 'Aggiungila alla home: si apre a schermo intero.'
+          : 'Tocca Condividi ⇧ poi "Aggiungi a Home".'}</span>
       </div>
-      {deferred && <button className="ib-btn" onClick={install}>Installa</button>}
+      {evt && <button className="ib-btn" onClick={install}>Installa</button>}
       <button className="ib-x" onClick={close}>✕</button>
     </div>
   )
