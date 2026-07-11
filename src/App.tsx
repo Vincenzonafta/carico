@@ -699,6 +699,16 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
       if (t.scheme) t.scheme.push({ type: 'normal', reps: String(itemReps(t)) })
       else t.sets += 1
     })
+  const removeSetRt = (it: PlanItem, isExtra: boolean) => {
+    const done = logOf(it.ex).length
+    const n = specs(it).length
+    if (n <= 1) return toast('È l\'ultima serie rimasta')
+    if (n <= done) return toast('Serie già completate: togli prima la spunta ✕')
+    patchItem(it.ex, isExtra, (t) => {
+      if (t.scheme) t.scheme.pop()
+      else t.sets -= 1
+    })
+  }
 
   const todayLog = s.log.filter((x) => x.date === today())
   const logOf = (ex: string) => todayLog.filter((x) => x.ex === ex)
@@ -820,7 +830,10 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
                 </div>
               )
             })}
-            <button className="addset" onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
+            <div className="setbtns" style={{ marginTop: 8 }}>
+              <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
+              <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
+            </div>
           </div>
         )
       })}

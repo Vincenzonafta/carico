@@ -14,7 +14,10 @@ html { scrollbar-width:none; }
 ::-webkit-scrollbar { width:0; height:0; }
 body { background:var(--bg); color:var(--chalk); font-family:var(--sans); font-size:var(--fs-base);
   -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none;
-  text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
+  text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
+  /* pagina sempre alta quanto lo schermo: nelle PWA installate le pagine corte
+     fanno galleggiare la nav fissa verso l'alto (bug iOS standalone) */
+  min-height:100vh; min-height:100dvh; }
 input, textarea, select { -webkit-user-select:text; user-select:text; }
 
 /* safe area: nell'app installata il contenuto finirebbe sotto notch e barra gesture */
@@ -276,6 +279,9 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .gearbtn:active { color:var(--chalk); }
 .addset { width:100%; margin-top:8px; padding:9px; font-size:13px; font-weight:600; font-family:var(--sans);
   background:transparent; color:var(--mut); border:1.5px dashed var(--hair); border-radius:11px; }
+.setbtns { display:flex; gap:8px; }
+.setbtns .addset { flex:1; width:auto; }
+.setbtns .addset.rm { flex:0 0 auto; padding:9px 14px; color:var(--mut2); }
 .seg .sg svg { margin:0 auto; }
 
 /* ============ impostazioni ============ */
