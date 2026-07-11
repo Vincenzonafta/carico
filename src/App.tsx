@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
@@ -92,8 +92,8 @@ export default function App() {
   // Timer globali: vivono qui, così sopravvivono al cambio di tab
   const [timer, setTimer] = useState<number | null>(null)
   const [total, setTotal] = useState(120)
-  const [chrono, setChrono] = useState(0)
-  const [chronoOn, setChronoOn] = useState(false)
+  const [workoutStart, setWorkoutStart] = useState<number | null>(null)
+  const [, tick] = useState(0) // ridisegna ogni secondo per far scorrere la durata
   useEffect(() => {
     if (timer == null) return
     if (timer <= 0) {
@@ -106,19 +106,18 @@ export default function App() {
     return () => clearTimeout(id)
   }, [timer]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!chronoOn) return
-    const id = setInterval(() => setChrono((c) => c + 1), 1000)
+    if (workoutStart == null) return
+    const id = setInterval(() => tick((n) => n + 1), 1000)
     return () => clearInterval(id)
-  }, [chronoOn])
+  }, [workoutStart])
   const startRest = (sec: number) => { ensureAudio(); setTimer(sec); setTotal(sec) }
-  const showTimer = tab === 'allena' || timer != null || chronoOn || chrono > 0
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
   const rColor = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
 
   return (
-    <div id="app" className={showTimer ? 'pad-timer' : ''}>
+    <div id="app" className={timer != null ? 'pad-timer' : ''}>
       <header>
         <span className="mark">CARICO</span><span className="dot" />
         <span className="rpill num" style={{ color: rColor, background: `color-mix(in srgb, ${rColor} 14%, transparent)` }}>
@@ -130,15 +129,13 @@ export default function App() {
 
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} />}
-      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} />}
+      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest}
+        workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} goAllena={() => setTab('allena')} />}
 
-      {showTimer && (
-        <TimerBar timer={timer} total={total} chrono={chrono} chronoOn={chronoOn}
-          onTimer={setTimer} onTotal={setTotal} onChrono={setChrono} onChronoOn={setChronoOn} />
-      )}
+      <TimerBar timer={timer} total={total} onTimer={setTimer} onTotal={setTotal} />
       <nav>
         {TABS.map((t) => (
           <a key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -584,33 +581,63 @@ function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onSt
 const mmss = (sec: number) => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
 
 // Popup timer flottante: recupero + crono, visibile ovunque sopra la nav
-function TimerBar({ timer, total, chrono, chronoOn, onTimer, onTotal, onChrono, onChronoOn }: {
-  timer: number | null; total: number; chrono: number; chronoOn: boolean
+// Popup flottante del recupero: appare solo mentre il timer va, visibile su ogni schermata
+function TimerBar({ timer, total, onTimer, onTotal }: {
+  timer: number | null; total: number
   onTimer: (v: number | null) => void; onTotal: (v: number) => void
-  onChrono: (v: number) => void; onChronoOn: (v: boolean) => void
 }) {
+  if (timer == null) return null
   return (
     <div className="timer timerbar">
-      {timer != null && (
-        <div className="trow">
-          <div style={{ flex: 'none' }}>
-            <div className="tl">Recupero</div>
-            <div className="tv num">{mmss(timer)}</div>
-          </div>
-          <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--teal)' }} /></div>
-          <button className="tbtn num" onClick={() => onTimer(Math.max(0, timer - 15))}>−15</button>
-          <button className="tbtn num" onClick={() => { onTimer(timer + 30); onTotal(Math.max(total, timer + 30)) }}>+30</button>
-          <button className="tbtn" onClick={() => onTimer(null)}>✕</button>
-        </div>
-      )}
-      <div className={'trow small' + (timer != null ? ' bordered' : '')}>
+      <div className="trow">
         <div style={{ flex: 'none' }}>
-          <div className="tl" style={{ color: 'var(--mut)' }}>Crono</div>
-          <div className="tv num" style={{ color: chronoOn ? 'var(--chalk)' : 'var(--mut2)' }}>{mmss(chrono)}</div>
+          <div className="tl">Recupero</div>
+          <div className="tv num">{mmss(timer)}</div>
         </div>
-        <div style={{ flex: 1 }} />
-        <button className="tbtn" onClick={() => onChronoOn(!chronoOn)}>{chronoOn ? '❚❚' : '▶'}</button>
-        <button className="tbtn" onClick={() => { onChrono(0); onChronoOn(false) }}>↺</button>
+        <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--teal)' }} /></div>
+        <button className="tbtn num" onClick={() => onTimer(Math.max(0, timer - 15))}>−15</button>
+        <button className="tbtn num" onClick={() => { onTimer(timer + 30); onTotal(Math.max(total, timer + 30)) }}>+30</button>
+        <button className="tbtn" onClick={() => onTimer(null)}>✕</button>
+      </div>
+    </div>
+  )
+}
+
+// Rotella di scroll per il recupero: scorri e il valore si applica subito (stile picker iOS)
+function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v: number) => void; onClose: () => void }) {
+  const ITEM = 46
+  const steps = Array.from({ length: 41 }, (_, i) => i * 15) // 0:00 → 10:00
+  const ref = useRef<HTMLDivElement>(null)
+  const [val, setVal] = useState(value)
+  useLayoutEffect(() => {
+    const idx = Math.max(0, steps.indexOf(Math.round(value / 15) * 15))
+    if (ref.current) ref.current.scrollTop = idx * ITEM
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const onScroll = () => {
+    if (!ref.current) return
+    const idx = Math.round(ref.current.scrollTop / ITEM)
+    const v = steps[Math.max(0, Math.min(steps.length - 1, idx))]
+    if (v !== val) { setVal(v); onChange(v) }
+  }
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet restsheet" onClick={(e) => e.stopPropagation()}>
+        <div className="bc" style={{ margin: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="crumb" style={{ color: 'var(--teal)' }}>Recupero · scorri</div>
+            <div className="bt1 num">{mmss(val)}</div>
+          </div>
+          <button className="pen" onClick={onClose}>✕</button>
+        </div>
+        <div className="wheelbox">
+          <div className="wheelband" />
+          <div className="wheel" ref={ref} onScroll={onScroll}>
+            <div className="wheelpad" />
+            {steps.map((v) => <div key={v} className={'wheeli num' + (v === val ? ' on' : '')}>{mmss(v)}</div>)}
+            <div className="wheelpad" />
+          </div>
+        </div>
+        <button onClick={onClose}>Fatto</button>
       </div>
     </div>
   )
@@ -618,7 +645,10 @@ function TimerBar({ timer, total, chrono, chronoOn, onTimer, onTotal, onChrono, 
 
 type Draft = { kg: string; reps: string; rpe: string }
 
-function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; startRest: (sec: number) => void }) {
+function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
+  s: State; setS: (u: State) => void; startRest: (sec: number) => void
+  workoutStart: number | null; setWorkoutStart: (v: number | null) => void
+}) {
   const plan = curItems(s)
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
   const items = [...plan, ...extras]
@@ -628,8 +658,10 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
-  const [menu, setMenu] = useState<{ it: PlanItem; isExtra: boolean } | null>(null)
+  const [menu, setMenu] = useState<{ it: PlanItem; isExtra: boolean; idx: number } | null>(null)
   const [swap, setSwap] = useState<{ ex: string; isExtra: boolean } | null>(null)
+  const [reorder, setReorder] = useState(false)
+  const [restPick, setRestPick] = useState<{ ex: string; isExtra: boolean } | null>(null)
 
   const addExtra = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -662,12 +694,15 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
       : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === ex)
     if (t) { fn(t); setS(d) }
   }
-  const changeRest = async (it: PlanItem, isExtra: boolean) => {
-    setMenu(null)
-    const v = await promptDlg('Recupero · ' + it.ex, [{ label: 'Secondi di recupero', value: String(it.rest) }])
-    const sec = v && parseInt(v[0], 10)
-    if (sec) patchItem(it.ex, isExtra, (t) => { t.rest = sec })
+  const movePlan = (i: number, dir: number) => {
+    const j = i + dir
+    if (j < 0 || j >= plan.length) return
+    const d = structuredClone(s)
+    const a = d.schede[s.activeScheda].days[s.activeDay].items
+    ;[a[i], a[j]] = [a[j], a[i]]
+    setS(d)
   }
+  const toggleSuperset = (it: PlanItem) => { patchItem(it.ex, false, (t) => { t.ss = !t.ss }); setMenu(null) }
   const doSwap = (name: string) => {
     if (!swap) return
     if (items.some((x) => x.ex === name)) return toast('Esercizio già in seduta')
@@ -750,6 +785,7 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
     const d = getDraft(it, sp, i)
     const kg = parseFloat(d.kg.replace(',', '.'))
     if (!kg || !+d.reps) return toast('Servono peso e ripetizioni')
+    if (workoutStart == null) setWorkoutStart(Date.now()) // il cronometro parte dalla prima serie segnata
     setS({ ...s, log: [...s.log, { date: today(), ex: it.ex, kg, reps: +d.reps, rpe: d.rpe ? +d.rpe : null }] })
     startRest(it.rest)
   }
@@ -769,16 +805,27 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
     </>
   )
 
+  const dur = workoutStart ? Math.floor((Date.now() - workoutStart) / 1000) : 0
+  const todayVol = todayLog.reduce((a, x) => a + x.kg * x.reps, 0)
+  // superset: un item plan con ss è legato al successivo; il seguente eredita il gruppo
+  const inSS = (idx: number) => idx < plan.length && ((plan[idx]?.ss ?? false) || (idx > 0 && (plan[idx - 1]?.ss ?? false)))
+
   return (
     <>
-      <div className="bc" style={{ marginBottom: 8 }}>
+      <div className="bc" style={{ marginBottom: 10 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="crumb">{curScheda(s)?.name} · allenamento</div>
           <div className="bt1">{day?.name}</div>
         </div>
         <span className={'exprog num' + (totalDone >= totalPlanned ? ' ok' : '')}>{totalDone}/{totalPlanned}</span>
       </div>
-      <div className="bt" style={{ height: 7 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
+
+      <div className="wstats card">
+        <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? mmss(dur) : '—'}</div></div>
+        <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
+        <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
+      </div>
+      <div className="bt" style={{ height: 7, marginTop: 10 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
       <p className="hint num">✦ Pesi proposti dal coach · readiness <b>{r}</b> · ✓ conferma o correggi</p>
 
       {items.map((it, idx) => {
@@ -787,19 +834,23 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
         const exDone = done >= sps.length
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
+        const ss = inSS(idx)
         return (
-          <div className={'card excard' + (exDone ? ' completed' : '')} key={it.ex}>
+          <div className={'card excard' + (exDone ? ' completed' : '') + (ss ? ' ssgroup' : '')} key={it.ex}>
             <div className="exhead">
-              <span className="exbar" style={{ background: mcolor(it.muscle) }} />
+              <span className="exbar" style={{ background: ss ? 'var(--teal)' : mcolor(it.muscle) }} />
               <div style={{ minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={() => setStatsEx(it.ex)}>
-                <b style={{ fontSize: 15.5 }}>{it.ex} <span style={{ color: 'var(--mut2)', fontSize: 13 }}>›</span></b>{tag && <span className="stag">{tag}</span>}{isExtra && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>}
-                <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · rec {mmss(it.rest)}</div>
+                <b style={{ fontSize: 15.5 }}>{it.ex} <span style={{ color: 'var(--mut2)', fontSize: 13 }}>›</span></b>{tag && <span className="stag">{tag}</span>}{ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Superset</span>}{isExtra && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>}
+                <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span></div>
                 {it.note && <div className="note">✎ {it.note}</div>}
               </div>
               <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
-              <span className="del gearbtn" onClick={() => setMenu({ it, isExtra })} title="Opzioni esercizio"><Gear /></span>
+              <span className="del gearbtn" onClick={() => setMenu({ it, isExtra, idx })} title="Opzioni esercizio"><Gear /></span>
               {isExtra && done === 0 && <span className="del" onClick={() => removeExtra(it.ex)}>✕</span>}
             </div>
+            <button className="restchip" onClick={() => setRestPick({ ex: it.ex, isExtra })}>
+              <span className="ic">⏱</span> Riposo <b className="num">{mmss(it.rest)}</b>
+            </button>
             {sps.map((sp, i) => {
               if (i < done) {
                 const logged = logOf(it.ex)[i]
@@ -844,8 +895,14 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
             <b className="dt">{menu.it.ex}</b>
             <button className="ghost" style={{ marginTop: 14 }}
               onClick={() => { setSwap({ ex: menu.it.ex, isExtra: menu.isExtra }); setMenu(null) }}>⇄ Sostituisci esercizio</button>
-            <button className="ghost" style={{ marginTop: 8 }}
-              onClick={() => changeRest(menu.it, menu.isExtra)}>⏱ Cambia recupero ({mmss(menu.it.rest)})</button>
+            {!menu.isExtra && plan.length > 1 && (
+              <button className="ghost" style={{ marginTop: 8 }}
+                onClick={() => { setReorder(true); setMenu(null) }}>↕ Riordina esercizi</button>
+            )}
+            {!menu.isExtra && menu.idx < plan.length - 1 && (
+              <button className="ghost" style={{ marginTop: 8, color: menu.it.ss ? 'var(--teal)' : undefined }}
+                onClick={() => toggleSuperset(menu.it)}>⛓ {menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}</button>
+            )}
             <button style={{ marginTop: 14 }} onClick={() => setMenu(null)}>Chiudi</button>
           </div>
         </div>
@@ -853,6 +910,36 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
       {swap && (
         <ExPicker lib={lib} title={'Sostituisci ' + swap.ex} onClose={() => setSwap(null)}
           onPick={doSwap} onCreate={createAndSwap} />
+      )}
+      {restPick && (() => {
+        const it = items.find((x) => x.ex === restPick.ex)
+        if (!it) return null
+        return <RestPicker value={it.rest} onClose={() => setRestPick(null)}
+          onChange={(v) => patchItem(restPick.ex, restPick.isExtra, (t) => { t.rest = v })} />
+      })()}
+      {reorder && (
+        <div className="overlay" onClick={() => setReorder(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="bc" style={{ margin: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="crumb">Ordine del giorno</div>
+                <div className="bt1">Riordina esercizi</div>
+              </div>
+              <button className="pen" onClick={() => setReorder(false)}>✕</button>
+            </div>
+            <div className="plist">
+              {plan.map((it, i) => (
+                <div className="reorow" key={it.ex}>
+                  <span className="exbar" style={{ background: mcolor(it.muscle) }} />
+                  <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
+                  <button className="ghost mini" disabled={i === 0} onClick={() => movePlan(i, -1)}>↑</button>
+                  <button className="ghost mini" disabled={i === plan.length - 1} onClick={() => movePlan(i, 1)}>↓</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setReorder(false)}>Fatto</button>
+          </div>
+        </div>
       )}
 
       <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
@@ -880,7 +967,7 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
               <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
             </div>
           ))}
-          <button style={{ marginTop: 12 }} onClick={() => setSummary(null)}>Chiudi</button>
+          <button style={{ marginTop: 12 }} onClick={() => { setSummary(null); setWorkoutStart(null) }}>Chiudi</button>
         </div>
       )}
     </>

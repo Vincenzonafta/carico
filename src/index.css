@@ -122,7 +122,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   bottom:calc(76px + env(safe-area-inset-bottom)); z-index:40; margin:0;
   background:rgba(10,20,18,.97); border:1px solid rgba(49,224,180,.4); border-radius:16px;
   padding:7px 13px; backdrop-filter:blur(10px); box-shadow:0 10px 34px rgba(0,0,0,.55); }
-#app.pad-timer { padding-bottom:calc(220px + env(safe-area-inset-bottom)); }
+#app.pad-timer { padding-bottom:calc(172px + env(safe-area-inset-bottom)); }
 .trow { display:flex; align-items:center; gap:10px; padding:4px 0; }
 .trow.bordered { border-top:1px solid rgba(49,224,180,.22); margin-top:8px; padding-top:12px; }
 .trow .tv { font-size:30px; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; line-height:1; }
@@ -281,7 +281,41 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   background:transparent; color:var(--mut); border:1.5px dashed var(--hair); border-radius:11px; }
 .setbtns { display:flex; gap:8px; }
 .setbtns .addset { flex:1; width:auto; }
-.setbtns .addset.rm { flex:0 0 auto; padding:9px 14px; color:var(--mut2); }
+.setbtns .addset.rm { flex:0 0 auto; padding:9px 16px; color:var(--coral);
+  background:rgba(251,111,132,.12); border:1.5px solid rgba(251,111,132,.4); border-style:solid; }
+
+/* header allenamento stile scheda: durata / volume / serie */
+.wstats { display:flex; padding:12px 6px; }
+.wstats .ws { flex:1; text-align:center; }
+.wstats .ws + .ws { border-left:1px solid var(--hair); }
+.wstats .v { font-size:20px; font-weight:800; margin-top:5px; }
+
+/* chip recupero cliccabile sotto ogni esercizio */
+.restchip { width:auto; margin:2px 0 8px; padding:7px 12px; font-size:13px; font-weight:600; font-family:var(--sans);
+  background:rgba(49,224,180,.1); color:var(--teal); border:1px solid rgba(49,224,180,.3); border-radius:10px;
+  display:inline-flex; align-items:center; gap:7px; }
+.restchip .ic { font-size:14px; }
+.restchip b { color:var(--teal); }
+
+/* superset: gruppo legato all'esercizio successivo */
+.excard.ssgroup { border-color:rgba(49,224,180,.4); }
+
+/* rotella recupero */
+.restsheet { height:auto; max-height:80%; }
+.wheelbox { position:relative; }
+.wheelband { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:46px;
+  border-top:1px solid rgba(49,224,180,.4); border-bottom:1px solid rgba(49,224,180,.4);
+  background:rgba(49,224,180,.06); border-radius:10px; pointer-events:none; }
+.wheel { height:230px; overflow-y:auto; scroll-snap-type:y mandatory; scrollbar-width:none; }
+.wheel::-webkit-scrollbar { display:none; }
+.wheelpad { height:92px; }
+.wheeli { height:46px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center;
+  font-size:20px; color:var(--mut2); font-weight:700; transition:color .1s, transform .1s; }
+.wheeli.on { color:var(--teal); font-size:26px; transform:scale(1.05); }
+
+/* sheet riordina */
+.reorow { display:flex; align-items:center; gap:11px; padding:11px 2px; border-bottom:1px solid var(--hair); }
+.reorow .ghost.mini { flex:0 0 auto; width:44px; padding:9px 0; }
 .seg .sg svg { margin:0 auto; }
 
 /* ============ impostazioni ============ */

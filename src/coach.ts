@@ -3,7 +3,8 @@
 export type SetLog = { date: string; ex: string; kg: number; reps: number; rpe: number | null }
 export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap' | 'failure'
 export type SetSpec = { type: SetType; reps: string; load?: string }
-export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[] }
+// ss = superset con l'esercizio immediatamente successivo del giorno
+export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number }
