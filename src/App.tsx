@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
@@ -42,13 +42,16 @@ const muscleOf = (s: State, ex: string) =>
 
 const rColor = (r: number) => (r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)')
 
+// Ogni cambio di schermata (tab o vista interna) riparte dall'inizio, senza flash
+const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0) }, [dep]) }
+
 export default function App() {
   const [s, setS] = useState<State>(load)
   const [tab, setTab] = useState<Tab>('oggi')
   useEffect(() => {
     try { localStorage.setItem(LS, JSON.stringify(s)) } catch { /* ignora */ }
   }, [s])
-  useEffect(() => { window.scrollTo(0, 0) }, [tab]) // ogni tab riparte dall'inizio
+  useTop(tab)
 
   // Timer globali: vivono qui, così sopravvivono al cambio di tab
   const [timer, setTimer] = useState<number | null>(null)
@@ -289,6 +292,7 @@ function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onSt
   const [imp, setImp] = useState(false); const [text, setText] = useState('')
   const [view, setView] = useState<'list' | 'scheda' | 'day'>('list')
   const [picker, setPicker] = useState(false)
+  useTop(view)
 
   const mutate = (fn: (d: State) => void) => { const d = structuredClone(s); fn(d); setS(d) }
   const dayItems = (d: State) => d.schede[s.activeScheda].days[s.activeDay].items
@@ -1063,6 +1067,7 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
   const [w, setW] = useState('')
   const [sub, setSub] = useState<'profilo' | 'stats' | 'cal'>('profilo')
   const [statsEx, setStatsEx] = useState<string | null>(null)
+  useTop(sub)
   const goalCur = bestE1rm(s.log, s.goal.ex)
   const pct = Math.min(100, Math.round((goalCur / s.goal.targetKg) * 100))
   const lvl = level(s.log), st = streak(s.log), tw = totalWorkouts(s.log), ton = totalTonnage(s.log)

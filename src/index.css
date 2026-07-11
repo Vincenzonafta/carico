@@ -103,6 +103,9 @@ nav .ico { display:flex; padding:5px 14px; border-radius:999px; }
 nav a.on { color:var(--lime); font-weight:700; }
 nav a.on .ico { background:rgba(201,249,78,.16); }
 nav svg { width:26px; height:26px; stroke:currentColor; fill:none; stroke-width:2; }
+/* tastierino aperto: nav e timer salirebbero sopra la tastiera — nascondili finché scrivi */
+body:has(input:focus:not([type=range]), textarea:focus) nav,
+body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none; }
 
 /* ============ timer + crono ============ */
 .timer { display:block; margin-top:10px; padding:10px 14px;
