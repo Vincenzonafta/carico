@@ -44,6 +44,15 @@ window.addEventListener('beforeinstallprompt', (e) => {
   window.dispatchEvent(new Event('carico-installable'))
 })
 
+// Ingranaggio (feather "settings"): icona pulita, riusata in Allena e Profilo
+const Gear = ({ size = 20 }: { size?: number }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size}
+    style={{ fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', display: 'block' }}>
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+)
+
 const LS = 'carico-v1'
 function load(): State {
   try {
@@ -619,6 +628,8 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ it: PlanItem; isExtra: boolean } | null>(null)
+  const [swap, setSwap] = useState<{ ex: string; isExtra: boolean } | null>(null)
 
   const addExtra = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -643,20 +654,51 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
   const removeExtra = (ex: string) =>
     setS({ ...s, extras: s.extras.filter((e) => !(e.date === today() && e.item.ex === ex)) })
 
-  // Ingranaggio: ritocca l'esercizio al volo durante la seduta (recupero, serie, reps)
-  const editItem = async (it: PlanItem, isExtra: boolean) => {
-    const fields = [{ label: 'Recupero (sec)', value: String(it.rest) }]
-    if (!it.scheme) fields.push({ label: 'Serie', value: String(it.sets) }, { label: 'Ripetizioni', value: String(it.reps) })
-    const v = await promptDlg(it.ex, fields)
-    if (!v) return
-    const patch: Partial<PlanItem> = { rest: parseInt(v[0], 10) || it.rest }
-    if (!it.scheme) { patch.sets = parseInt(v[1], 10) || it.sets; patch.reps = parseInt(v[2], 10) || it.reps }
+  // Ingranaggio: opzioni runtime sull'esercizio in corso
+  const patchItem = (ex: string, isExtra: boolean, fn: (t: PlanItem) => void) => {
     const d = structuredClone(s)
-    const target = isExtra
-      ? d.extras.find((e) => e.date === today() && e.item.ex === it.ex)?.item
-      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === it.ex)
-    if (target) { Object.assign(target, patch); setS(d) }
+    const t = isExtra
+      ? d.extras.find((e) => e.date === today() && e.item.ex === ex)?.item
+      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === ex)
+    if (t) { fn(t); setS(d) }
   }
+  const changeRest = async (it: PlanItem, isExtra: boolean) => {
+    setMenu(null)
+    const v = await promptDlg('Recupero · ' + it.ex, [{ label: 'Secondi di recupero', value: String(it.rest) }])
+    const sec = v && parseInt(v[0], 10)
+    if (sec) patchItem(it.ex, isExtra, (t) => { t.rest = sec })
+  }
+  const doSwap = (name: string) => {
+    if (!swap) return
+    if (items.some((x) => x.ex === name)) return toast('Esercizio già in seduta')
+    const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
+    patchItem(swap.ex, swap.isExtra, (t) => { t.ex = name; t.muscle = muscle })
+    setSwap(null)
+    toast('Esercizio sostituito')
+  }
+  const createAndSwap = async () => {
+    const v = await promptDlg('Nuovo esercizio', [
+      { label: 'Nome', placeholder: 'es. Panca presa stretta' },
+      { label: 'Gruppo muscolare', options: [...MUSCLES, 'Altro'] },
+    ])
+    const name = v?.[0]?.trim(); if (!name || !swap) return
+    const existing = lib.find((e) => e.name.toLowerCase() === name.toLowerCase())
+    if (items.some((x) => x.ex === (existing?.name ?? name))) return toast('Esercizio già in seduta')
+    const muscle = existing?.muscle ?? (v![1] || 'Altro')
+    const d = structuredClone(s)
+    if (!existing) d.customExercises.push({ name, muscle })
+    const t = swap.isExtra
+      ? d.extras.find((e) => e.date === today() && e.item.ex === swap.ex)?.item
+      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === swap.ex)
+    if (t) { t.ex = existing?.name ?? name; t.muscle = muscle }
+    setS(d); setSwap(null)
+    toast('Esercizio sostituito')
+  }
+  const addSetRt = (it: PlanItem, isExtra: boolean) =>
+    patchItem(it.ex, isExtra, (t) => {
+      if (t.scheme) t.scheme.push({ type: 'normal', reps: String(itemReps(t)) })
+      else t.sets += 1
+    })
 
   const todayLog = s.log.filter((x) => x.date === today())
   const logOf = (ex: string) => todayLog.filter((x) => x.ex === ex)
@@ -745,7 +787,7 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
                 {it.note && <div className="note">✎ {it.note}</div>}
               </div>
               <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
-              <span className="del" onClick={() => editItem(it, isExtra)} title="Impostazioni esercizio">⚙</span>
+              <span className="del gearbtn" onClick={() => setMenu({ it, isExtra })} title="Opzioni esercizio"><Gear /></span>
               {isExtra && done === 0 && <span className="del" onClick={() => removeExtra(it.ex)}>✕</span>}
             </div>
             {sps.map((sp, i) => {
@@ -778,9 +820,27 @@ function Allena({ s, setS, startRest }: { s: State; setS: (u: State) => void; st
                 </div>
               )
             })}
+            <button className="addset" onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
           </div>
         )
       })}
+
+      {menu && (
+        <div className="overlay center" onClick={() => setMenu(null)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <b className="dt">{menu.it.ex}</b>
+            <button className="ghost" style={{ marginTop: 14 }}
+              onClick={() => { setSwap({ ex: menu.it.ex, isExtra: menu.isExtra }); setMenu(null) }}>⇄ Sostituisci esercizio</button>
+            <button className="ghost" style={{ marginTop: 8 }}
+              onClick={() => changeRest(menu.it, menu.isExtra)}>⏱ Cambia recupero ({mmss(menu.it.rest)})</button>
+            <button style={{ marginTop: 14 }} onClick={() => setMenu(null)}>Chiudi</button>
+          </div>
+        </div>
+      )}
+      {swap && (
+        <ExPicker lib={lib} title={'Sostituisci ' + swap.ex} onClose={() => setSwap(null)}
+          onPick={doSwap} onCreate={createAndSwap} />
+      )}
 
       <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
       {picker && (
@@ -1140,8 +1200,10 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
   return (
     <>
       <div className="seg" style={{ marginTop: 4 }}>
-        {([['profilo', 'Profilo'], ['stats', 'Stats'], ['cal', 'Calend.'], ['set', '⚙']] as const).map(([k, l]) => (
-          <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>{l}</button>
+        {([['profilo', 'Profilo'], ['stats', 'Stats'], ['cal', 'Calend.'], ['set', '']] as const).map(([k, l]) => (
+          <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>
+            {k === 'set' ? <Gear size={18} /> : l}
+          </button>
         ))}
       </div>
 

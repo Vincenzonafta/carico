@@ -271,6 +271,13 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .cal .cd.sel { background:var(--lime); color:var(--lime-ink); font-weight:800; }
 .cal .cd.sel::after { background:var(--lime-ink); }
 
+/* ============ ingranaggio e serie extra ============ */
+.gearbtn { color:var(--mut); padding:5px 2px 5px 6px; }
+.gearbtn:active { color:var(--chalk); }
+.addset { width:100%; margin-top:8px; padding:9px; font-size:13px; font-weight:600; font-family:var(--sans);
+  background:transparent; color:var(--mut); border:1.5px dashed var(--hair); border-radius:11px; }
+.seg .sg svg { margin:0 auto; }
+
 /* ============ impostazioni ============ */
 .tog { width:50px; height:30px; flex:none; padding:3px; border-radius:999px;
   background:var(--surf2); border:1px solid var(--hair); display:flex; justify-content:flex-start; }
