@@ -38,6 +38,9 @@ h2, .tile .l, .prop .t, .msg .who, .timer .tl, .prband .pt2, .verdict .vt,
   text-transform:uppercase; color:var(--mut); font-weight:600;
 }
 h2 { margin:22px 2px 10px; }
+/* la prima riga di ogni tab (h2 di Schede/Coach, .bc delle sottoviste) non deve
+   aggiungere spazio: nell'app installata l'header è già l'unico distanziatore in alto */
+#app > header + h2, #app > header + .bc { margin-top:0; }
 
 .card { background:var(--surf); border:1px solid var(--hair); border-radius:16px; padding:14px; }
 
