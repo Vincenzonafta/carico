@@ -371,6 +371,8 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .kcalbig { font-size:38px; font-weight:800; line-height:1; }
 .kcalhead .l { margin-top:5px; }
 .kcalsub { font-size:15px; font-weight:700; color:var(--chalk); }
+.goaledit { position:absolute; top:12px; right:12px; width:36px; height:36px; padding:0; border-radius:11px;
+  display:flex; align-items:center; justify-content:center; }
 .macros { display:flex; justify-content:space-around; margin-top:14px; }
 .mring { display:flex; flex-direction:column; align-items:center; }
 .mring svg { width:56px; height:56px; }
@@ -379,11 +381,18 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .mring .mr-l { font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.06em; margin-top:6px; text-transform:uppercase; }
 .mring .mr-t { font-family:var(--mono); font-size:11px; color:var(--mut2); margin-top:2px; }
 
-.mealhead { display:flex; align-items:center; gap:10px; margin:20px 2px 9px; }
-.mealhead .mh-t { font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--mut); font-weight:600; }
-.mealhead .mh-k { font-size:12px; }
-.mealhead .mh-add { margin-left:auto; width:34px; height:34px; flex:none; padding:0; border-radius:11px;
-  font-size:20px; line-height:1; background:rgba(201,249,78,.14); color:var(--lime); border:1px solid rgba(201,249,78,.3); }
+/* ogni pasto è un blocco ben separato con la sua testata */
+.mealsec { margin-top:16px; }
+.mealsec:first-of-type { margin-top:18px; }
+.mealhead { display:flex; align-items:center; gap:9px; margin:0 4px 8px; }
+.mealhead .mh-t { font-size:15.5px; font-weight:800; letter-spacing:.01em; }
+.mealhead .mh-k { font-size:12.5px; margin-left:2px; }
+.mealhead .mh-add { margin-left:auto; width:32px; height:32px; flex:none; padding:0; border-radius:10px;
+  font-size:19px; line-height:1; background:rgba(201,249,78,.14); color:var(--lime); border:1px solid rgba(201,249,78,.3); }
+.mealcard { padding:4px 12px; }
+.set.proposed { cursor:pointer; opacity:.72; }
+.set.proposed .ex { font-style:italic; }
+.set.proposed .meta { color:var(--lime); font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; }
 
 /* ============ profilo ============ */
 .flame { display:flex; align-items:baseline; gap:6px; }

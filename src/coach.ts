@@ -21,6 +21,7 @@ export type State = {
   extras: { date: string; item: PlanItem }[]
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number }
+  mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
   settings: { sound: boolean; vibrate: boolean }
 }
@@ -165,6 +166,58 @@ export const mealFromFood = (f: Food, grams: number, type: MealType): Meal => ({
   carbs: Math.round(f.carbs * grams / 10) / 10,
   fat: Math.round(f.fat * grams / 10) / 10,
 })
+
+// Trova un alimento per nome (esatto o parziale), fra archivio + personalizzati
+export function foodLookup(name: string, extra: Food[] = []): Food | null {
+  const all = [...FOODS, ...extra]
+  const n = name.toLowerCase().trim()
+  return all.find((f) => f.name.toLowerCase() === n)
+    || all.find((f) => f.name.toLowerCase().includes(n) || n.includes(f.name.toLowerCase()))
+    || null
+}
+
+// --- Piani alimentari: import da testo/JSON (la stessa struttura che l'IA produrrà) ---
+export type PlanFood = { name: string; grams: number }
+export type MealPlan = { name: string; slots: { type: MealType; items: PlanFood[] }[] }
+
+export function planItemToMeal(item: PlanFood, type: MealType, extra: Food[] = []): Meal {
+  const f = foodLookup(item.name, extra)
+  return f ? mealFromFood(f, item.grams, type)
+    : { date: today(), type, name: item.name, grams: item.grams, kcal: 0, protein: 0, carbs: 0, fat: 0 }
+}
+
+const mealTypeOf = (s: string): MealType | null => {
+  const l = s.toLowerCase()
+  if (/colaz|breakfast/.test(l)) return 'colazione'
+  if (/pranz|lunch/.test(l)) return 'pranzo'
+  if (/cena|dinner/.test(l)) return 'cena'
+  if (/spunt|merend|snack/.test(l)) return 'spuntino'
+  return null
+}
+// Parser piano: righe come "Colazione: Avena 80g, Uova 100g" oppure JSON dell'app
+export function parseMealPlan(text: string): MealPlan | null {
+  const t = text.trim(); if (!t) return null
+  if (t[0] === '{' || t[0] === '[') {
+    try { const j = JSON.parse(t); const p = Array.isArray(j) ? j[0] : j; if (p?.slots?.length) return p as MealPlan } catch { /* non JSON */ }
+  }
+  let name = 'Piano importato'
+  const slots: MealPlan['slots'] = []
+  for (const raw of t.split(/\r?\n/)) {
+    const line = raw.trim(); if (!line) continue
+    if (/^#/.test(line)) { name = line.replace(/^#+\s*/, ''); continue }
+    const m = line.match(/^(.+?)\s*[:\-–]\s*(.+)$/)
+    if (!m) continue
+    const type = mealTypeOf(m[1]); if (!type) continue
+    const items = m[2].split(/[,;]+/).map((x) => x.trim()).filter(Boolean).map((part) => {
+      const gm = part.match(/(\d+(?:[.,]\d+)?)\s*g\b/i) || part.match(/(\d+(?:[.,]\d+)?)\s*$/)
+      const grams = gm ? Math.round(parseFloat(gm[1].replace(',', '.'))) : 100
+      const nm = part.replace(/\d+(?:[.,]\d+)?\s*g?\b/ig, '').replace(/[·\-–—:]+$/, '').trim()
+      return { name: nm || part, grams }
+    })
+    if (items.length) slots.push({ type, items })
+  }
+  return slots.length ? { name, slots } : null
+}
 
 // Volume per gruppo muscolare (serie allenanti negli ultimi N giorni)
 export function muscleVolume(s: State, days = 7): Record<string, number> {
@@ -352,6 +405,9 @@ if (import.meta.env.DEV) {
   console.assert(p?.days[0].items.length === 2 && p.days[0].items[1].muscle === 'Spalle', 'parser scheda')
   const ramp = makePreset('ramping', 5)
   console.assert(ramp.length === 4 && ramp[0].type === 'warmup', 'preset ramping')
+  const mp = parseMealPlan('Colazione: Avena 80g, Uova 100g\nCena: Salmone 150g')
+  console.assert(mp?.slots.length === 2 && mp.slots[0].items[0].grams === 80, 'parser piano alimentare')
+  console.assert(planItemToMeal({ name: 'Salmone', grams: 200 }, 'cena').kcal === 416, 'plan item -> meal con macro')
   console.assert(itemReps({ ex: 'x', sets: 4, reps: 8, rest: 0, muscle: '', scheme: ramp }) === 5, 'itemReps salta il warmup')
 }
 
@@ -395,6 +451,7 @@ export function seed(): State {
     ],
     customFoods: [],
     target: { kcal: 2600, protein: 170, carbs: 280, fat: 80 },
+    mealPlan: null,
     body: [
       { date: d(56), kg: 77.2 }, { date: d(42), kg: 77.6 }, { date: d(28), kg: 77.9 },
       { date: d(14), kg: 78.1 }, { date: today(), kg: 78.4 },
