@@ -301,16 +301,16 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* barra fissa dell'allenamento: resta in alto mentre scorri (durata/volume/serie + Finito) */
 .wbar { position:sticky; top:calc(var(--topbar) + env(safe-area-inset-top) + 6px); z-index:20; margin-bottom:12px;
-  background:var(--surf); border:1px solid var(--hair); border-radius:16px; padding:12px 14px;
+  background:var(--surf); border:1px solid var(--hair); border-radius:14px; padding:9px 13px;
   box-shadow:0 8px 22px rgba(0,0,0,.4); }
 .wbar-top { display:flex; align-items:center; gap:10px; }
-.wbar-day { font-size:19px; font-weight:800; margin-top:2px; letter-spacing:-.01em;
+.wbar-day { font-size:17px; font-weight:800; margin-top:1px; letter-spacing:-.01em;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.finito { width:auto; flex:none; padding:11px 20px; font-size:15px; border-radius:12px; }
-.wstats { display:flex; margin-top:12px; }
+.finito { width:auto; flex:none; padding:9px 17px; font-size:14px; border-radius:11px; }
+.wstats { display:flex; margin-top:9px; }
 .wstats .ws { flex:1; text-align:center; }
 .wstats .ws + .ws { border-left:1px solid var(--hair); }
-.wstats .v { font-size:20px; font-weight:800; margin-top:5px; }
+.wstats .v { font-size:17px; font-weight:800; margin-top:3px; }
 
 /* chip recupero cliccabile sotto ogni esercizio */
 .restchip { width:auto; margin:2px 0 8px; padding:7px 12px; font-size:13px; font-weight:600; font-family:var(--sans);
@@ -365,6 +365,25 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .numedit { width:100px; text-align:right; padding:9px 10px; flex:none; }
 .filebtn { display:block; text-align:center; margin-top:8px; padding:14px; border:1.5px solid var(--hair);
   border-radius:13px; font-weight:600; font-size:16px; cursor:pointer; color:var(--chalk); }
+
+/* ============ cibo ============ */
+.kcalhead { display:flex; align-items:flex-end; justify-content:space-between; }
+.kcalbig { font-size:38px; font-weight:800; line-height:1; }
+.kcalhead .l { margin-top:5px; }
+.kcalsub { font-size:15px; font-weight:700; color:var(--chalk); }
+.macros { display:flex; justify-content:space-around; margin-top:14px; }
+.mring { display:flex; flex-direction:column; align-items:center; }
+.mring svg { width:56px; height:56px; }
+.mring .mr-bg { fill:none; stroke:var(--surf2); stroke-width:5; }
+.mring .mr-v { fill:var(--chalk); font-family:var(--mono); font-size:16px; font-weight:800; text-anchor:middle; dominant-baseline:central; }
+.mring .mr-l { font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.06em; margin-top:6px; text-transform:uppercase; }
+.mring .mr-t { font-family:var(--mono); font-size:11px; color:var(--mut2); margin-top:2px; }
+
+.mealhead { display:flex; align-items:center; gap:10px; margin:20px 2px 9px; }
+.mealhead .mh-t { font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em; text-transform:uppercase; color:var(--mut); font-weight:600; }
+.mealhead .mh-k { font-size:12px; }
+.mealhead .mh-add { margin-left:auto; width:34px; height:34px; flex:none; padding:0; border-radius:11px;
+  font-size:20px; line-height:1; background:rgba(201,249,78,.14); color:var(--lime); border:1px solid rgba(201,249,78,.3); }
 
 /* ============ profilo ============ */
 .flame { display:flex; align-items:baseline; gap:6px; }

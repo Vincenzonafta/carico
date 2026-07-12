@@ -8,7 +8,9 @@ export type PlanItem = { ex: string; sets: number; reps: number; rest: number; m
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number }
-export type Meal = { date: string; name: string; kcal: number; protein: number }
+export type MealType = 'colazione' | 'pranzo' | 'cena' | 'spuntino'
+export type Meal = { date: string; type: MealType; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }
+export type Food = { name: string; cat: string; kcal: number; protein: number; carbs: number; fat: number } // valori per 100 g
 export type BodyLog = { date: string; kg: number }
 export type Goal = { ex: string; targetKg: number }
 export type Water = { date: string; ml: number }
@@ -18,7 +20,7 @@ export type State = {
   customExercises: Exercise[]
   extras: { date: string; item: PlanItem }[]
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
-  meals: Meal[]; target: { kcal: number; protein: number }
+  meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number }
   body: BodyLog[]; goal: Goal; water: Water[]
   settings: { sound: boolean; vibrate: boolean }
 }
@@ -118,7 +120,51 @@ export function weeklyReport(s: State) {
 
 export const nutritionToday = (meals: Meal[], date: string) =>
   meals.filter((m) => m.date === date).reduce(
-    (a, m) => ({ kcal: a.kcal + m.kcal, protein: a.protein + m.protein }), { kcal: 0, protein: 0 })
+    (a, m) => ({ kcal: a.kcal + (m.kcal || 0), protein: a.protein + (m.protein || 0), carbs: a.carbs + (m.carbs || 0), fat: a.fat + (m.fat || 0) }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 })
+
+// --- Alimentazione: tipi pasto e archivio alimenti (valori per 100 g) ---
+export const MEAL_TYPES: { key: MealType; label: string }[] = [
+  { key: 'colazione', label: 'Colazione' }, { key: 'pranzo', label: 'Pranzo' },
+  { key: 'cena', label: 'Cena' }, { key: 'spuntino', label: 'Spuntini' },
+]
+export const FOOD_CATS = ['Proteine', 'Carbo', 'Frutta/Verdura', 'Latticini', 'Grassi']
+const mkFoods = (cat: string, rows: [string, number, number, number, number][]): Food[] =>
+  rows.map(([name, kcal, protein, carbs, fat]) => ({ name, cat, kcal, protein, carbs, fat }))
+export const FOODS: Food[] = [
+  ...mkFoods('Proteine', [
+    ['Petto di pollo', 165, 31, 0, 3.6], ['Fesa di tacchino', 135, 29, 0, 1.5], ['Uovo', 155, 13, 1.1, 11],
+    ['Albume', 52, 11, 0.7, 0.2], ['Tonno al naturale', 116, 26, 0, 1], ['Salmone', 208, 20, 0, 13],
+    ['Merluzzo', 82, 18, 0, 0.7], ['Manzo magro', 187, 26, 0, 9], ['Bresaola', 151, 32, 0, 2],
+    ['Prosciutto cotto', 145, 20, 1, 6], ['Proteine whey', 400, 80, 8, 6],
+  ]),
+  ...mkFoods('Carbo', [
+    ['Riso bianco cotto', 130, 2.7, 28, 0.3], ['Pasta cotta', 158, 5.8, 31, 0.9], ['Pane', 265, 9, 49, 3.2],
+    ['Avena', 389, 17, 66, 7], ['Patate', 77, 2, 17, 0.1], ['Fagioli cotti', 127, 8.7, 22, 0.5],
+    ['Lenticchie cotte', 116, 9, 20, 0.4], ['Ceci cotti', 164, 8.9, 27, 2.6], ['Pizza margherita', 266, 11, 33, 10],
+    ['Miele', 304, 0.3, 82, 0],
+  ]),
+  ...mkFoods('Frutta/Verdura', [
+    ['Banana', 89, 1.1, 23, 0.3], ['Mela', 52, 0.3, 14, 0.2], ['Pomodoro', 18, 0.9, 3.9, 0.2],
+    ['Insalata', 15, 1.4, 2.9, 0.2], ['Zucchine', 17, 1.2, 3.1, 0.3], ['Broccoli', 34, 2.8, 7, 0.4],
+  ]),
+  ...mkFoods('Latticini', [
+    ['Latte p.s.', 46, 3.4, 4.8, 1.5], ['Yogurt greco', 97, 9, 3.6, 5], ['Skyr', 63, 11, 4, 0.2],
+    ['Parmigiano', 431, 38, 4, 29], ['Mozzarella', 253, 18, 3, 19],
+  ]),
+  ...mkFoods('Grassi', [
+    ['Olio d\'oliva', 884, 0, 0, 100], ['Burro d\'arachidi', 588, 25, 20, 50], ['Mandorle', 579, 21, 22, 49],
+    ['Cioccolato fondente', 546, 4.9, 61, 31], ['Avocado', 160, 2, 9, 15],
+  ]),
+]
+// Meal calcolato da un alimento su una quantità in grammi
+export const mealFromFood = (f: Food, grams: number, type: MealType): Meal => ({
+  date: today(), type, name: f.name, grams,
+  kcal: Math.round(f.kcal * grams / 100),
+  protein: Math.round(f.protein * grams / 10) / 10,
+  carbs: Math.round(f.carbs * grams / 10) / 10,
+  fat: Math.round(f.fat * grams / 10) / 10,
+})
 
 // Volume per gruppo muscolare (serie allenanti negli ultimi N giorni)
 export function muscleVolume(s: State, days = 7): Record<string, number> {
@@ -344,10 +390,11 @@ export function seed(): State {
       ...mk(d(2), 'Military press', 38, [10, 10, 9, 9], [7.5, 8, 8, 8.5]),
     ],
     meals: [
-      { date: today(), name: 'Colazione — avena, uova', kcal: 520, protein: 34 },
-      { date: today(), name: 'Pranzo — riso, pollo', kcal: 780, protein: 62 },
+      { date: today(), type: 'colazione', name: 'Avena e uova', kcal: 520, protein: 34, carbs: 55, fat: 18 },
+      { date: today(), type: 'pranzo', name: 'Riso e pollo', kcal: 780, protein: 62, carbs: 95, fat: 14 },
     ],
-    target: { kcal: 2600, protein: 170 },
+    customFoods: [],
+    target: { kcal: 2600, protein: 170, carbs: 280, fat: 80 },
     body: [
       { date: d(56), kg: 77.2 }, { date: d(42), kg: 77.6 }, { date: d(28), kg: 77.9 },
       { date: d(14), kg: 78.1 }, { date: today(), kg: 78.4 },

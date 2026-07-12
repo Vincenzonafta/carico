@@ -7,6 +7,7 @@ import {
   streak, level, badges, totalWorkouts, totalTonnage,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
+  type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 
@@ -79,7 +80,11 @@ function load(): State {
         p.schede = [{ name: 'La mia scheda', days: [{ name: 'Giorno 1', items: p.plan }] }]
         p.activeScheda = 0; p.activeDay = 0; delete p.plan
       }
-      return { ...seed(), ...p } // i campi nuovi ereditano i default
+      const base = seed()
+      const m = { ...base, ...p } // i campi nuovi ereditano i default
+      m.target = { ...base.target, ...(p.target ?? {}) } // carbo/grassi per i salvataggi vecchi
+      m.settings = { ...base.settings, ...(p.settings ?? {}) }
+      return m
     }
   } catch { /* storage non disponibile */ }
   return seed()
@@ -1043,20 +1048,140 @@ function Bar({ v, max, color, label, unit }: { v: number; max: number; color: st
   )
 }
 
+const FCOLOR: Record<string, string> = {
+  Proteine: '#FB6F84', Carbo: '#F5B84A', 'Frutta/Verdura': '#8BD450', Latticini: '#63A6F5', Grassi: '#A78BFA',
+}
+const fcolor = (c: string) => FCOLOR[c] ?? '#7E8A9A'
+
+// Anello macro compatto (proteine/carbo/grassi)
+function MacroRing({ v, max, color, label }: { v: number; max: number; color: string; label: string }) {
+  const R = 22, C = 2 * Math.PI * R
+  const pct = max ? Math.min(1, v / max) : 0
+  return (
+    <div className="mring">
+      <svg viewBox="0 0 56 56">
+        <circle className="mr-bg" cx="28" cy="28" r={R} />
+        <circle cx="28" cy="28" r={R} stroke={color} strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
+          style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%', transition: 'stroke-dashoffset .4s' }}
+          fill="none" strokeWidth="5" strokeLinecap="round" />
+        <text x="28" y="29" className="mr-v">{Math.round(v)}</text>
+      </svg>
+      <div className="mr-l" style={{ color }}>{label}</div>
+      <div className="mr-t num">/{max}g</div>
+    </div>
+  )
+}
+
+// Foglio archivio alimenti: cerca + filtra per categoria, tap per aggiungere
+function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick }: {
+  foods: Food[]; typeLabel: string
+  onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void
+}) {
+  const [q, setQ] = useState('')
+  const [cat, setCat] = useState<string | null>(null)
+  const list = foods
+    .filter((f) => (!cat || f.cat === cat) && f.name.toLowerCase().includes(q.toLowerCase().trim()))
+    .sort((a, b) => (a.cat === b.cat ? a.name.localeCompare(b.name) : a.cat.localeCompare(b.cat)))
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="bc" style={{ margin: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="crumb">Archivio alimenti</div>
+            <div className="bt1">Aggiungi a {typeLabel}</div>
+          </div>
+          <button className="pen" onClick={onClose}>✕</button>
+        </div>
+        <input placeholder="Cerca alimento…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
+        <div className="chips scrollx">
+          <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat(null)}>Tutti</button>
+          {FOOD_CATS.map((c) => (
+            <button key={c} className={'chip' + (cat === c ? ' on' : '')} onClick={() => setCat(cat === c ? null : c)}>
+              <span className="mdot" style={{ background: fcolor(c) }} />{c}
+            </button>
+          ))}
+        </div>
+        <div className="plist">
+          {list.map((f) => (
+            <div className="prow2" key={f.name} onClick={() => onPick(f)}>
+              <span className="exbar" style={{ background: fcolor(f.cat) }} />
+              <div style={{ minWidth: 0 }}><b>{f.name}</b>
+                <div className="meta num" style={{ color: fcolor(f.cat) }}>{f.kcal} kcal · {f.protein}P {f.carbs}C {f.fat}G <span className="mut">/100g</span></div></div>
+              <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
+            </div>
+          ))}
+          {!list.length && <p className="sm mut" style={{ margin: '14px 2px' }}>Niente con questo nome.</p>}
+        </div>
+        <div className="row">
+          <button className="ghost" onClick={onQuick}>Pasto veloce</button>
+          <button className="ghost" onClick={onCreate}>+ Nuovo alimento</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Cibo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const tot = nutritionToday(s.meals, today())
   const wt = waterToday(s.water, today()), wg = waterGoal(s)
   const addWater = (ml: number) => setS({ ...s, water: [...s.water, { date: today(), ml }] })
-  const [name, setName] = useState(''); const [kcal, setKcal] = useState(''); const [prot, setProt] = useState('')
-  const todays = s.meals.map((m, i) => ({ m, i })).filter((x) => x.m.date === today())
-  const add = () => {
-    if (!name || !kcal) return toast('Servono nome e kcal')
-    setS({ ...s, meals: [...s.meals, { date: today(), name, kcal: +kcal, protein: +(prot || 0) }] })
-    setName(''); setKcal(''); setProt('')
+  const [picker, setPicker] = useState<MealType | null>(null)
+  const foods = [...FOODS, ...s.customFoods]
+  const typeLabel = MEAL_TYPES.find((t) => t.key === picker)?.label ?? ''
+
+  const askGrams = async (label: string) => {
+    const v = await promptDlg(label, [{ label: 'Quantità (grammi)', value: '100' }])
+    return v ? parseFloat(v[0].replace(',', '.')) : null
   }
+  const pickFood = async (f: Food) => {
+    const g = await askGrams(f.name); if (!g) return
+    setS({ ...s, meals: [...s.meals, mealFromFood(f, g, picker!)] }); setPicker(null)
+  }
+  const createFood = async () => {
+    const v = await promptDlg('Nuovo alimento · valori per 100 g', [
+      { label: 'Nome', placeholder: 'es. Fiocchi di latte' }, { label: 'Categoria', options: FOOD_CATS },
+      { label: 'Kcal' }, { label: 'Proteine g' }, { label: 'Carboidrati g' }, { label: 'Grassi g' },
+    ])
+    const name = v?.[0]?.trim(); if (!name) return
+    const f: Food = { name, cat: v![1], kcal: +v![2] || 0, protein: +v![3] || 0, carbs: +v![4] || 0, fat: +v![5] || 0 }
+    const g = await askGrams(name) ?? 100
+    setS({ ...s, customFoods: [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
+    setPicker(null)
+  }
+  const quickMeal = async () => {
+    const v = await promptDlg('Pasto veloce', [
+      { label: 'Nome', placeholder: 'es. Cena fuori' }, { label: 'Kcal' },
+      { label: 'Proteine g' }, { label: 'Carboidrati g' }, { label: 'Grassi g' },
+    ])
+    const name = v?.[0]?.trim(); if (!name) return
+    setS({ ...s, meals: [...s.meals, { date: today(), type: picker!, name, kcal: +v![1] || 0, protein: +v![2] || 0, carbs: +v![3] || 0, fat: +v![4] || 0 }] })
+    setPicker(null)
+  }
+  const delMeal = (i: number) => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })
+
+  const kcalLeft = s.target.kcal - tot.kcal
+  const kpct = Math.min(100, s.target.kcal ? (tot.kcal / s.target.kcal) * 100 : 0)
   const missing = Math.max(0, s.target.protein - tot.protein)
+
   return (
     <>
+      <h2>Oggi</h2>
+      <div className="card">
+        <div className="kcalhead">
+          <div>
+            <div className="kcalbig num" style={{ color: kcalLeft < 0 ? 'var(--coral)' : 'var(--chalk)' }}>{Math.abs(Math.round(kcalLeft))}</div>
+            <div className="l">{kcalLeft < 0 ? 'kcal oltre il target' : 'kcal rimaste'}</div>
+          </div>
+          <div className="kcalsub num">{Math.round(tot.kcal)} <span className="mut">/ {s.target.kcal}</span></div>
+        </div>
+        <div className="bt" style={{ height: 8, marginTop: 10 }}><i style={{ width: kpct + '%', background: kcalLeft < 0 ? 'var(--coral)' : 'var(--lime)' }} /></div>
+        <div className="macros">
+          <MacroRing v={tot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" />
+          <MacroRing v={tot.carbs} max={s.target.carbs} color="var(--amber)" label="Carbo" />
+          <MacroRing v={tot.fat} max={s.target.fat} color="#A78BFA" label="Grassi" />
+        </div>
+      </div>
+
       <h2>Idratazione</h2>
       <div className="card">
         <Bar v={wt} max={wg} color="var(--blue)" label="Acqua" unit="ml" />
@@ -1066,36 +1191,45 @@ function Cibo({ s, setS }: { s: State; setS: (u: State) => void }) {
         </div>
         {wg > 2500 && <p className="sm mut" style={{ margin: '8px 2px 0' }}>Obiettivo <b style={{ color: 'var(--blue)' }}>+700 ml</b> oggi: ti alleni, servono più liquidi.</p>}
       </div>
-      <h2>Oggi hai mangiato</h2>
-      <div className="card">
-        <Bar v={tot.kcal} max={s.target.kcal} color="var(--lime)" label="Kcal" unit="" />
-        <Bar v={tot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" unit="g" />
-      </div>
-      <h2>Aggiungi pasto</h2>
-      <div className="card">
-        <input placeholder="Nome (es. Cena — salmone)" value={name} onChange={(e) => setName(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
-        <div className="row" style={{ marginTop: 8 }}>
-          <input type="number" placeholder="kcal" inputMode="numeric" value={kcal} onChange={(e) => setKcal(e.target.value)} />
-          <input type="number" placeholder="proteine g" inputMode="numeric" value={prot} onChange={(e) => setProt(e.target.value)} />
-        </div>
-        <button style={{ marginTop: 10 }} onClick={add}>Aggiungi</button>
-      </div>
-      <h2>Pasti di oggi</h2>
-      <div className="card" style={{ padding: '4px 12px' }}>
-        {todays.length ? todays.map(({ m, i }) => (
-          <div className="set" key={i}>
-            <div style={{ minWidth: 0 }}><div className="ex" style={{ fontSize: 13 }}>{m.name}</div>
-              <div className="meta num">{m.protein} g proteine</div></div>
-            <span className="wb num" style={{ color: 'var(--chalk)', background: 'transparent', border: 0 }}>{m.kcal} kcal</span>
-            <span className="del" onClick={() => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })}>✕</span>
+
+      {MEAL_TYPES.map(({ key, label }) => {
+        const ms = s.meals.map((m, i) => ({ m, i })).filter((x) => x.m.date === today() && (x.m.type ?? 'spuntino') === key)
+        const kc = ms.reduce((a, x) => a + (x.m.kcal || 0), 0)
+        return (
+          <div key={key}>
+            <div className="mealhead">
+              <span className="mh-t">{label}</span>
+              {kc > 0 && <span className="num mut mh-k">{Math.round(kc)} kcal</span>}
+              <button className="mh-add" onClick={() => setPicker(key)}>＋</button>
+            </div>
+            {ms.length > 0 && (
+              <div className="card" style={{ padding: '4px 12px' }}>
+                {ms.map(({ m, i }) => (
+                  <div className="set" key={i}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="ex" style={{ fontSize: 14 }}>{m.name}{m.grams ? <span className="mut sm num"> · {m.grams}g</span> : null}</div>
+                      <div className="meta num">{Math.round(m.protein || 0)}P · {Math.round(m.carbs || 0)}C · {Math.round(m.fat || 0)}G</div>
+                    </div>
+                    <span className="wb num" style={{ color: 'var(--chalk)', background: 'transparent', border: 0 }}>{Math.round(m.kcal)} kcal</span>
+                    <span className="del" onClick={() => delMeal(i)}>✕</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessun pasto: aggiungine uno sopra.</p>}
-      </div>
-      <div className="msg" style={{ marginTop: 12 }}><div className="who">Carico Coach</div>
+        )
+      })}
+
+      <div className="msg" style={{ marginTop: 14 }}><div className="who">Carico Coach</div>
         {missing > 0
           ? <>Ti mancano <b>{Math.round(missing)} g di proteine</b> per il target: stasera pesce, uova o skyr.</>
           : <>Target proteico raggiunto: <b>ottimo</b>, il recupero muscolare ringrazia.</>}
       </div>
+
+      {picker && (
+        <FoodPicker foods={foods} typeLabel={typeLabel} onClose={() => setPicker(null)}
+          onPick={pickFood} onCreate={createFood} onQuick={quickMeal} />
+      )}
     </>
   )
 }
