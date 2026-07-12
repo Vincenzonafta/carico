@@ -346,7 +346,8 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
 // Tab Schede: gestione schede + calendario allenamenti (coerente con lo stile del Cibo)
 function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onStart: () => void }) {
-  const [tab, setTab] = useState<'schede' | 'cal'>('schede')
+  const [tab, setTab] = useState<'schede' | 'cal' | 'stats'>('schede')
+  const [statsEx, setStatsEx] = useState<string | null>(null)
   const repeatDay = (date: string) => {
     const sets = s.log.filter((l) => l.date === date)
     const already = new Set([...curItems(s).map((i) => i.ex), ...s.extras.filter((e) => e.date === today()).map((e) => e.item.ex)])
@@ -360,11 +361,14 @@ function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onSt
   return (
     <>
       <div className="seg" style={{ marginTop: 4, marginBottom: 4 }}>
-        {([['schede', 'Schede'], ['cal', 'Calendario']] as const).map(([k, l]) => (
+        {([['schede', 'Schede'], ['cal', 'Calendario'], ['stats', 'Stats']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
-      {tab === 'cal' ? <Calendario s={s} onRepeat={repeatDay} /> : <SchedeManager s={s} setS={setS} onStart={onStart} />}
+      {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} />}
+      {tab === 'cal' && <Calendario s={s} onRepeat={repeatDay} />}
+      {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
+      {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
     </>
   )
 }
@@ -1467,19 +1471,38 @@ function CiboCalendario({ s }: { s: State }) {
       </div>
       {sel && selTot && (
         <div className="card" style={{ marginTop: 10 }}>
-          <b style={{ fontSize: 16 }}>{sel.split('-').reverse().join('/')}</b>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <b style={{ fontSize: 16 }}>{new Date(sel + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
+            <span className="meta num">{s.target.kcal ? Math.round(selTot.kcal / s.target.kcal * 100) : 0}% target</span>
+          </div>
           <div className="tiles" style={{ marginTop: 10 }}>
-            <div className="tile"><div className="l">Kcal</div><div className="v num">{Math.round(selTot.kcal)}</div></div>
-            <div className="tile"><div className="l">Proteine</div><div className="v num">{Math.round(selTot.protein)} <span className="sm mut">g</span></div></div>
+            <div className="tile"><div className="l">Calorie</div><div className="v num">{Math.round(selTot.kcal)} <span className="sm mut">/ {s.target.kcal}</span></div></div>
+            <div className="tile"><div className="l">Acqua</div><div className="v num">{(waterToday(s.water, sel) / 1000).toFixed(1).replace('.', ',')} <span className="sm mut">L</span></div></div>
           </div>
-          <div style={{ marginTop: 8 }}>
-            {selMeals.map((m, i) => (
-              <div className="set" key={i}>
-                <b className="sm">{m.name}</b>
-                <span className="meta num" style={{ marginLeft: 'auto' }}>{Math.round(m.kcal)} kcal</span>
+          <div style={{ marginTop: 12 }}>
+            <Bar v={selTot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" unit="g" />
+            <Bar v={selTot.carbs} max={s.target.carbs} color="var(--amber)" label="Carbo" unit="g" />
+            <Bar v={selTot.fat} max={s.target.fat} color="#A78BFA" label="Grassi" unit="g" />
+          </div>
+          {MEAL_TYPES.map(({ key, label }) => {
+            const ms = selMeals.filter((m) => (m.type ?? 'spuntino') === key)
+            if (!ms.length) return null
+            const kc = ms.reduce((a, m) => a + (m.kcal || 0), 0)
+            return (
+              <div key={key} style={{ marginTop: 12 }}>
+                <div className="mealhead" style={{ margin: '0 2px 6px' }}><span className="mh-t">{label}</span><span className="num mut mh-k">{Math.round(kc)} kcal</span></div>
+                {ms.map((m, i) => (
+                  <div className="set" key={i}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="ex" style={{ fontSize: 13.5 }}>{m.name}{m.grams ? <span className="mut sm num"> · {m.grams}g</span> : null}</div>
+                      <div className="meta num">{Math.round(m.protein || 0)}P · {Math.round(m.carbs || 0)}C · {Math.round(m.fat || 0)}G</div>
+                    </div>
+                    <span className="wb num" style={{ color: 'var(--chalk)', background: 'transparent', border: 0 }}>{Math.round(m.kcal)} kcal</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
       )}
     </>
@@ -1795,11 +1818,10 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
   const first = s.body.length ? s.body[0].kg : cur
   const [w, setW] = useState('')
-  const [sub, setSub] = useState<'profilo' | 'stats' | 'set'>('profilo')
-  const [statsEx, setStatsEx] = useState<string | null>(null)
+  const [sub, setSub] = useState<'profilo' | 'set'>('profilo')
   useTop(sub)
   const goalCur = bestE1rm(s.log, s.goal.ex)
-  const pct = Math.min(100, Math.round((goalCur / s.goal.targetKg) * 100))
+  const gpct = Math.min(100, Math.round((goalCur / s.goal.targetKg) * 100))
   const lvl = level(s.log), st = streak(s.log), tw = totalWorkouts(s.log), ton = totalTonnage(s.log)
   const bg = badges(s)
   const addW = () => {
@@ -1808,21 +1830,44 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
     setW('')
   }
 
+  const r = readiness(s.checkin)
+  const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
+  const rCol = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
+  const ciDone = s.checkin.date === today()
+
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
+  const since = weekAgo.toISOString().slice(0, 10)
+  const weekSessions = new Set(s.log.filter((l) => l.date > since).map((l) => l.date)).size
+
+  const fdays = Array.from({ length: 7 }, (_, i) => { const t = new Date(); t.setDate(t.getDate() - i); return t.toISOString().slice(0, 10) })
+  const flogged = fdays.filter((d) => s.meals.some((m) => m.date === d))
+  const favg = (pick: (n: ReturnType<typeof nutritionToday>) => number) =>
+    flogged.length ? Math.round(flogged.reduce((a, d) => a + pick(nutritionToday(s.meals, d)), 0) / flogged.length) : 0
+  const ftot = nutritionToday(s.meals, today())
+
   return (
     <>
       <div className="seg" style={{ marginTop: 4 }}>
-        {([['profilo', 'Profilo'], ['stats', 'Statistiche'], ['set', '']] as const).map(([k, l]) => (
+        {([['profilo', 'Profilo'], ['set', '']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>
             {k === 'set' ? <Gear size={18} /> : l}
           </button>
         ))}
       </div>
 
-      {sub === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
       {sub === 'set' && <Impostazioni s={s} setS={setS} />}
-      {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {sub !== 'profilo' ? null : (<>
-      <h2>Progressi</h2>
+      <h2>Stato di oggi</h2>
+      <div className="card ready">
+        <Ring v={r} color={rCol} />
+        <div style={{ minWidth: 0 }}>
+          <div className="rl" style={{ color: rCol }}>{rLabel} · READINESS</div>
+          <div className="rh">{ciDone ? 'Check-in fatto oggi' : 'Check-in da fare'}</div>
+          <div className="rd num">Sonno {s.checkin.sonno} · Energia {s.checkin.energia} · DOMS {s.checkin.doms} · Stress {s.checkin.stress}</div>
+        </div>
+      </div>
+
+      <h2>Allenamento</h2>
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div>
@@ -1832,16 +1877,24 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
           <div className="flame"><span>🔥</span><b className="num">{st}</b><span className="sm mut">giorni</span></div>
         </div>
         <div className="bt" style={{ marginTop: 10 }}><i style={{ width: (lvl.into / lvl.need * 100) + '%', background: 'var(--lime)' }} /></div>
-        <div className="meta num" style={{ marginTop: 8 }}>{lvl.into}/{lvl.need} al livello {lvl.n + 1} · {tw} sessioni · {fmt(ton / 1000)} t sollevate</div>
+        <div className="tiles" style={{ marginTop: 12 }}>
+          <div className="tile"><div className="l">Sessioni</div><div className="v num">{tw}</div></div>
+          <div className="tile"><div className="l">Questa settimana</div><div className="v num">{weekSessions}</div></div>
+          <div className="tile"><div className="l">Sollevato</div><div className="v num">{fmt(ton / 1000)} <span className="sm mut">t</span></div></div>
+          <div className="tile"><div className="l">{s.goal.ex}</div><div className="v num">{fmt(goalCur)}<span className="sm mut">/{s.goal.targetKg} · {gpct}%</span></div></div>
+        </div>
       </div>
-      <h2>Badge</h2>
-      <div className="badges">
-        {bg.map((b) => (
-          <div className={'badge' + (b.got ? ' got' : '')} key={b.name}>
-            <div className="bi">{b.icon}</div><div className="bl">{b.name}</div>
-          </div>
-        ))}
+
+      <h2>Alimentazione</h2>
+      <div className="card">
+        <div className="tiles">
+          <div className="tile"><div className="l">Kcal oggi</div><div className="v num">{Math.round(ftot.kcal)} <span className="sm mut">/ {s.target.kcal}</span></div></div>
+          <div className="tile"><div className="l">Proteine oggi</div><div className="v num">{Math.round(ftot.protein)} <span className="sm mut">/ {s.target.protein}g</span></div></div>
+          <div className="tile"><div className="l">Media kcal 7gg</div><div className="v num">{favg((n) => n.kcal)}</div></div>
+          <div className="tile"><div className="l">Media prot. 7gg</div><div className="v num">{favg((n) => n.protein)} <span className="sm mut">g</span></div></div>
+        </div>
       </div>
+
       <h2>Peso corporeo</h2>
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -1854,14 +1907,14 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
           <button style={{ width: 'auto', padding: '10px 16px' }} onClick={addW}>Salva</button>
         </div>
       </div>
-      <h2>Obiettivo attivo</h2>
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <b style={{ fontSize: 15 }}>{s.goal.ex} {s.goal.targetKg} kg</b>
-          <span className="mono" style={{ color: 'var(--lime)' }}>{pct}%</span>
-        </div>
-        <div className="bt" style={{ marginTop: 9 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
-        <div className="meta num" style={{ marginTop: 8 }}>{fmt(goalCur)} di {s.goal.targetKg} kg · 1RM stimato attuale</div>
+
+      <h2>Badge</h2>
+      <div className="badges">
+        {bg.map((b) => (
+          <div className={'badge' + (b.got ? ' got' : '')} key={b.name}>
+            <div className="bi">{b.icon}</div><div className="bl">{b.name}</div>
+          </div>
+        ))}
       </div>
       </>)}
     </>
