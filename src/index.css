@@ -222,7 +222,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .bc .back { width:42px; height:42px; flex:none; padding:0; border-radius:13px;
   background:var(--surf); border:1px solid var(--hair); color:var(--chalk); font-size:24px; line-height:1; }
 .bc .bt1 { font-size:var(--fs-title); font-weight:800; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bc .pen { width:42px; height:42px; flex:none; padding:0; border-radius:13px;
+.pen { width:42px; height:42px; flex:none; padding:0; border-radius:13px; display:flex; align-items:center; justify-content:center;
   background:transparent; border:1px solid var(--hair); color:var(--mut); font-size:19px; }
 
 .navcard { display:flex; align-items:center; gap:12px; background:var(--surf); border:1px solid var(--hair);
@@ -412,6 +412,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 /* risultati OpenFoodFacts nel picker */
 .offhead { font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase;
   color:var(--blue); font-weight:700; margin:14px 2px 6px; padding-top:10px; border-top:1px solid var(--hair); }
+
+/* dettaglio alimento */
+.fdetail { height:auto; max-height:90%; overflow-y:auto; }
+.qrow { display:flex; align-items:center; gap:10px; margin-top:8px; }
+.qbtn { flex:none; width:50px; height:50px; padding:0; font-size:24px; font-weight:700; border-radius:12px;
+  background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); display:flex; align-items:center; justify-content:center; }
+.qrow input { flex:1; font-size:20px; font-weight:700; }
+.qunit { flex:none; font-family:var(--mono); font-size:13px; color:var(--mut); }
 
 /* ============ profilo ============ */
 .flame { display:flex; align-items:baseline; gap:6px; }

@@ -1152,9 +1152,56 @@ function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; o
   )
 }
 
-// Foglio archivio alimenti: cerca in locale + su OpenFoodFacts, filtra per categoria
-function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBarcode, onAddExternal }: {
-  foods: Food[]; typeLabel: string
+// Dettaglio alimento: quantità regolabile, anteprima macro, Salva (aggiunge solo qui)
+function FoodDetail({ food, target, typeLabel, onSave, onClose }: {
+  food: Food; target: State['target']; typeLabel: string; onSave: (grams: number) => void; onClose: () => void
+}) {
+  const [g, setG] = useState('100')
+  const grams = parseFloat(g.replace(',', '.')) || 0
+  const val = (x: number) => Math.round((x || 0) * grams / 100 * 10) / 10
+  const kcal = Math.round((food.kcal || 0) * grams / 100)
+  const kpct = target.kcal ? Math.round(kcal / target.kcal * 100) : 0
+  const bump = (d: number) => setG((cur) => String(Math.max(0, Math.round((parseFloat(cur.replace(',', '.')) || 0) + d))))
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet fdetail" onClick={(e) => e.stopPropagation()}>
+        <div className="bc" style={{ margin: 0 }}>
+          <span className="exbar" style={{ background: fcolor(food.cat), minHeight: 42 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="crumb" style={{ color: fcolor(food.cat) }}>{food.cat === 'Altro' ? 'Alimento' : food.cat}</div>
+            <div className="bt1">{food.name}</div>
+          </div>
+          <button className="pen" onClick={onClose}>✕</button>
+        </div>
+        <div className="l" style={{ marginTop: 4 }}>Aggiungi a {typeLabel}</div>
+        <div className="qrow">
+          <button className="qbtn" onClick={() => bump(-10)}>−</button>
+          <input value={g} onChange={(e) => setG(e.target.value)} inputMode="decimal" className="num" style={{ textAlign: 'center' }} />
+          <button className="qbtn" onClick={() => bump(10)}>＋</button>
+          <span className="qunit">grammi</span>
+        </div>
+        <button onClick={() => grams > 0 && onSave(grams)} style={{ marginTop: 12 }}>Salva nel diario</button>
+        <div className="tiles" style={{ marginTop: 14 }}>
+          <div className="tile"><div className="l">Calorie</div><div className="v num">{kcal} <span className="sm mut">({kpct}%)</span></div></div>
+          <div className="tile"><div className="l">Grassi</div><div className="v num">{val(food.fat)} <span className="sm mut">g</span></div></div>
+          <div className="tile"><div className="l">Carboidrati</div><div className="v num">{val(food.carbs)} <span className="sm mut">g</span></div></div>
+          <div className="tile"><div className="l">Proteine</div><div className="v num">{val(food.protein)} <span className="sm mut">g</span></div></div>
+        </div>
+        <h2>Valori per 100 g</h2>
+        <div className="card" style={{ padding: '4px 12px' }}>
+          <div className="mrow"><span>Energia</span><b className="num">{food.kcal} kcal</b></div>
+          <div className="mrow"><span>Grassi</span><b className="num">{food.fat} g</b></div>
+          <div className="mrow"><span>Carboidrati</span><b className="num">{food.carbs} g</b></div>
+          <div className="mrow"><span>Proteine</span><b className="num">{food.protein} g</b></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Foglio archivio alimenti: recenti + cerca in locale + su OpenFoodFacts, filtra per categoria
+function FoodPicker({ foods, recents, typeLabel, onPick, onClose, onCreate, onQuick, onBarcode, onAddExternal }: {
+  foods: Food[]; recents: Food[]; typeLabel: string
   onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void
   onBarcode: (code: string) => void; onAddExternal: (f: Food) => void
 }) {
@@ -1163,9 +1210,11 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBa
   const [cat, setCat] = useState<string | null>(null)
   const [remote, setRemote] = useState<Food[]>([])
   const [searching, setSearching] = useState(false)
-  const term = q.trim()
-  const list = foods
-    .filter((f) => (!cat || f.cat === cat) && f.name.toLowerCase().includes(term.toLowerCase()))
+  const term = q.trim().toLowerCase()
+  const words = term.split(/\s+/).filter(Boolean)
+  const idle = !term && !cat // schermata iniziale: mostra i recenti
+  const list = idle ? [] : foods
+    .filter((f) => (!cat || f.cat === cat) && words.every((w) => f.name.toLowerCase().includes(w)))
     .sort((a, b) => (a.cat === b.cat ? a.name.localeCompare(b.name) : a.cat.localeCompare(b.cat)))
   // ricerca su OpenFoodFacts, con debounce; esclude i nomi già presenti in locale
   useEffect(() => {
@@ -1178,7 +1227,7 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBa
         setRemote(res.filter((f) => !known.has(f.name.toLowerCase())))
       } catch { setRemote([]) }
       setSearching(false)
-    }, 500)
+    }, 350)
     return () => clearTimeout(id)
   }, [term, cat]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -1204,6 +1253,16 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBa
           ))}
         </div>
         <div className="plist">
+          {idle && recents.length > 0 && <div className="offhead" style={{ color: 'var(--mut)', borderTop: 0, paddingTop: 0 }}>Mangiati di recente</div>}
+          {idle && recents.map((f) => (
+            <div className="prow2" key={'r-' + f.name} onClick={() => onPick(f)}>
+              <span className="exbar" style={{ background: fcolor(f.cat) }} />
+              <div style={{ minWidth: 0 }}><b>{f.name}</b>
+                <div className="meta num" style={{ color: fcolor(f.cat) }}>{f.kcal} kcal · {f.protein}P {f.carbs}C {f.fat}G <span className="mut">/100g</span></div></div>
+              <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
+            </div>
+          ))}
+          {idle && !recents.length && <p className="sm mut" style={{ margin: '14px 2px' }}>Cerca un alimento o scansiona un codice a barre.</p>}
           {list.map((f) => (
             <div className="prow2" key={f.name} onClick={() => onPick(f)}>
               <span className="exbar" style={{ background: fcolor(f.cat) }} />
@@ -1223,8 +1282,8 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBa
               <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
             </div>
           ))}
-          {!list.length && !remote.length && !searching && (
-            <p className="sm mut" style={{ margin: '14px 2px' }}>{term.length < 3 ? 'Niente in archivio.' : 'Nessun prodotto trovato.'}</p>
+          {!idle && !list.length && !remote.length && !searching && (
+            <p className="sm mut" style={{ margin: '14px 2px' }}>{term.length < 3 ? 'Niente in archivio: continua a scrivere per cercare online.' : 'Nessun prodotto trovato.'}</p>
           )}
         </div>
         <div className="row">
@@ -1266,16 +1325,31 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
     if (v) setWater(parseInt(v[0], 10) || 0)
   }
   const [picker, setPicker] = useState<MealType | null>(null)
+  const [detail, setDetail] = useState<{ food: Food; external: boolean } | null>(null)
   const foods = [...FOODS, ...s.customFoods]
   const typeLabel = MEAL_TYPES.find((t) => t.key === picker)?.label ?? ''
 
-  const askGrams = async (label: string) => {
-    const v = await promptDlg(label, [{ label: 'Quantità (grammi)', value: '100' }])
-    return v ? parseFloat(v[0].replace(',', '.')) : null
-  }
-  const pickFood = async (f: Food) => {
-    const g = await askGrams(f.name); if (!g) return
-    setS({ ...s, meals: [...s.meals, mealFromFood(f, g, picker!)] }); setPicker(null)
+  // alimenti mangiati di recente, ricostruiti dai pasti (valori riportati a 100 g)
+  const recents: Food[] = (() => {
+    const out: Food[] = [], seen = new Set<string>()
+    for (let i = s.meals.length - 1; i >= 0 && out.length < 10; i--) {
+      const m = s.meals[i], key = m.name.toLowerCase(), g = m.grams || 100
+      if (seen.has(key)) continue; seen.add(key)
+      const r1 = (x: number) => Math.round((x || 0) / g * 1000) / 10
+      out.push({ name: m.name, cat: foodLookup(m.name, s.customFoods)?.cat ?? 'Altro', kcal: Math.round((m.kcal || 0) / g * 100), protein: r1(m.protein), carbs: r1(m.carbs), fat: r1(m.fat) })
+    }
+    return out
+  })()
+
+  const openDetail = (food: Food, external: boolean) => setDetail({ food, external })
+  const pickFood = (f: Food) => openDetail(f, false)
+  const addExternal = (f: Food) => openDetail(f, true)
+  const saveDetail = (grams: number) => {
+    if (!detail || !picker) return
+    const { food, external } = detail
+    const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === food.name.toLowerCase())
+    setS({ ...s, customFoods: external && !exists ? [...s.customFoods, food] : s.customFoods, meals: [...s.meals, mealFromFood(food, grams, picker)] })
+    setDetail(null); setPicker(null)
   }
   const createFood = async () => {
     const v = await promptDlg('Nuovo alimento · valori per 100 g', [
@@ -1283,10 +1357,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       { label: 'Kcal' }, { label: 'Proteine g' }, { label: 'Carboidrati g' }, { label: 'Grassi g' },
     ])
     const name = v?.[0]?.trim(); if (!name) return
-    const f: Food = { name, cat: v![1], kcal: +v![2] || 0, protein: +v![3] || 0, carbs: +v![4] || 0, fat: +v![5] || 0 }
-    const g = await askGrams(name) ?? 100
-    setS({ ...s, customFoods: [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
-    setPicker(null)
+    openDetail({ name, cat: v![1], kcal: +v![2] || 0, protein: +v![3] || 0, carbs: +v![4] || 0, fat: +v![5] || 0 }, true)
   }
   const quickMeal = async () => {
     const v = await promptDlg('Pasto veloce', [
@@ -1300,19 +1371,12 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
   const delMeal = (i: number) => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })
   const addPlanItem = (type: MealType, item: { name: string; grams: number }) =>
     setS({ ...s, meals: [...s.meals, planItemToMeal(item, type, s.customFoods)] })
-  // Alimento esterno (barcode o OpenFoodFacts): chiedi grammi, salva in archivio, logga
-  const addExternal = async (f: Food) => {
-    const g = await askGrams(f.name) ?? 100
-    const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === f.name.toLowerCase())
-    setS({ ...s, customFoods: exists ? s.customFoods : [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
-    setPicker(null)
-  }
   const onBarcode = async (code: string) => {
     toast('Cerco il prodotto…')
     let f: Food | null = null
     try { f = await fetchFoodByBarcode(code) } catch { /* rete assente */ }
     if (!f) return toast('Prodotto non trovato. Prova un altro codice o inseriscilo a mano.')
-    addExternal(f)
+    openDetail(f, true)
   }
   const editGoals = async () => {
     const v = await promptDlg('Obiettivi giornalieri', [
@@ -1411,8 +1475,12 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       </div>
 
       {picker && (
-        <FoodPicker foods={foods} typeLabel={typeLabel} onClose={() => setPicker(null)}
+        <FoodPicker foods={foods} recents={recents} typeLabel={typeLabel} onClose={() => setPicker(null)}
           onPick={pickFood} onCreate={createFood} onQuick={quickMeal} onBarcode={onBarcode} onAddExternal={addExternal} />
+      )}
+      {detail && (
+        <FoodDetail food={detail.food} target={s.target} typeLabel={typeLabel}
+          onClose={() => setDetail(null)} onSave={saveDetail} />
       )}
     </>
   )
