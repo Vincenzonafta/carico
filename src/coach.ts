@@ -176,16 +176,34 @@ export async function fetchFoodByBarcode(code: string): Promise<Food | null> {
   if (!r.ok) return null
   const j = await r.json()
   if (j.status !== 1 || !j.product) return null
-  const n = j.product.nutriments || {}
+  return offToFood({ ...j.product, product_name: j.product.product_name || 'Prodotto' })
+}
+
+// Mappa un prodotto OpenFoodFacts nel nostro Food (valori per 100 g)
+function offToFood(p: Record<string, unknown>): Food | null {
+  const n = (p.nutriments as Record<string, number>) || {}
   const r1 = (x: number) => Math.round((x || 0) * 10) / 10
   const kcal = n['energy-kcal_100g'] ?? (n['energy_100g'] ? n['energy_100g'] / 4.184 : 0)
-  const nm = j.product.product_name_it || j.product.product_name || 'Prodotto'
-  const brand = j.product.brands ? String(j.product.brands).split(',')[0].trim() : ''
+  const nm = (p.product_name_it as string) || (p.product_name as string)
+  if (!nm || !kcal) return null
+  const brand = p.brands ? String(p.brands).split(',')[0].trim() : ''
   return {
     name: brand && !nm.toLowerCase().includes(brand.toLowerCase()) ? `${nm} · ${brand}` : nm,
-    cat: 'Altro', kcal: Math.round(kcal || 0),
-    protein: r1(n.proteins_100g), carbs: r1(n.carbohydrates_100g), fat: r1(n.fat_100g),
+    cat: 'Altro', kcal: Math.round(kcal), protein: r1(n.proteins_100g), carbs: r1(n.carbohydrates_100g), fat: r1(n.fat_100g),
   }
+}
+
+// Cerca alimenti per nome su OpenFoodFacts (es. "nutella" -> prodotti reali).
+// La ricerca full-text di OFF non manda header CORS, quindi la instradiamo via proxy.
+// ponytail: proxy pubblico come stopgap; un piccolo worker proprio è l'upgrade se serve affidabilità.
+export async function searchFoods(term: string): Promise<Food[]> {
+  const off = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,product_name_it,brands,nutriments`
+  const r = await fetch('https://corsproxy.io/?url=' + encodeURIComponent(off))
+  if (!r.ok) return []
+  const j = await r.json()
+  const out: Food[] = []
+  for (const p of (j.products ?? [])) { const f = offToFood(p); if (f) out.push(f) }
+  return out.filter((f, i) => out.findIndex((x) => x.name === f.name) === i).slice(0, 15)
 }
 
 // Trova un alimento per nome (esatto o parziale), fra archivio + personalizzati

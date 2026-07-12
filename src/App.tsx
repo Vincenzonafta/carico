@@ -8,7 +8,7 @@ import {
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
   type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
-  foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode,
+  foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 
@@ -154,7 +154,7 @@ export default function App() {
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
-      {tab === 'profilo' && <Profilo s={s} setS={setS} goAllena={() => setTab('allena')} />}
+      {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
       <TimerBar timer={timer} total={total} onTimer={setTimer} onTotal={setTotal} />
       <nav>
@@ -344,7 +344,32 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
   )
 }
 
+// Tab Schede: gestione schede + calendario allenamenti (coerente con lo stile del Cibo)
 function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onStart: () => void }) {
+  const [tab, setTab] = useState<'schede' | 'cal'>('schede')
+  const repeatDay = (date: string) => {
+    const sets = s.log.filter((l) => l.date === date)
+    const already = new Set([...curItems(s).map((i) => i.ex), ...s.extras.filter((e) => e.date === today()).map((e) => e.item.ex)])
+    const items = [...new Set(sets.map((x) => x.ex))].filter((ex) => !already.has(ex)).map((ex) => {
+      const v = sets.filter((x) => x.ex === ex)
+      return { ex, sets: v.length, reps: Math.round(v.reduce((a, x) => a + x.reps, 0) / v.length), rest: 120, muscle: muscleOf(s, ex) }
+    })
+    setS({ ...s, extras: [...s.extras, ...items.map((item) => ({ date: today(), item }))] })
+    toast('Seduta copiata in oggi'); onStart()
+  }
+  return (
+    <>
+      <div className="seg" style={{ marginTop: 4, marginBottom: 4 }}>
+        {([['schede', 'Schede'], ['cal', 'Calendario']] as const).map(([k, l]) => (
+          <button key={k} className={'sg' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </div>
+      {tab === 'cal' ? <Calendario s={s} onRepeat={repeatDay} /> : <SchedeManager s={s} setS={setS} onStart={onStart} />}
+    </>
+  )
+}
+
+function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => void; onStart: () => void }) {
   const sc = curScheda(s)
   const items = curItems(s)
   const lib = [...EXERCISES, ...s.customExercises]
@@ -1123,17 +1148,35 @@ function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; o
   )
 }
 
-// Foglio archivio alimenti: cerca + filtra per categoria, tap per aggiungere
-function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBarcode }: {
+// Foglio archivio alimenti: cerca in locale + su OpenFoodFacts, filtra per categoria
+function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBarcode, onAddExternal }: {
   foods: Food[]; typeLabel: string
-  onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void; onBarcode: (code: string) => void
+  onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void
+  onBarcode: (code: string) => void; onAddExternal: (f: Food) => void
 }) {
   const [scan, setScan] = useState(false)
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<string | null>(null)
+  const [remote, setRemote] = useState<Food[]>([])
+  const [searching, setSearching] = useState(false)
+  const term = q.trim()
   const list = foods
-    .filter((f) => (!cat || f.cat === cat) && f.name.toLowerCase().includes(q.toLowerCase().trim()))
+    .filter((f) => (!cat || f.cat === cat) && f.name.toLowerCase().includes(term.toLowerCase()))
     .sort((a, b) => (a.cat === b.cat ? a.name.localeCompare(b.name) : a.cat.localeCompare(b.cat)))
+  // ricerca su OpenFoodFacts, con debounce; esclude i nomi già presenti in locale
+  useEffect(() => {
+    if (cat || term.length < 3) { setRemote([]); setSearching(false); return }
+    setSearching(true)
+    const id = setTimeout(async () => {
+      try {
+        const res = await searchFoods(term)
+        const known = new Set(list.map((f) => f.name.toLowerCase()))
+        setRemote(res.filter((f) => !known.has(f.name.toLowerCase())))
+      } catch { setRemote([]) }
+      setSearching(false)
+    }, 500)
+    return () => clearTimeout(id)
+  }, [term, cat]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -1165,7 +1208,20 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBa
               <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
             </div>
           ))}
-          {!list.length && <p className="sm mut" style={{ margin: '14px 2px' }}>Niente con questo nome.</p>}
+          {(remote.length > 0 || searching) && (
+            <div className="offhead">Da OpenFoodFacts {searching && <span className="mut">· cerco…</span>}</div>
+          )}
+          {remote.map((f) => (
+            <div className="prow2" key={'off-' + f.name} onClick={() => onAddExternal(f)}>
+              <span className="exbar" style={{ background: 'var(--blue)' }} />
+              <div style={{ minWidth: 0 }}><b>{f.name}</b>
+                <div className="meta num" style={{ color: 'var(--blue)' }}>{f.kcal} kcal · {f.protein}P {f.carbs}C {f.fat}G <span className="mut">/100g</span></div></div>
+              <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
+            </div>
+          ))}
+          {!list.length && !remote.length && !searching && (
+            <p className="sm mut" style={{ margin: '14px 2px' }}>{term.length < 3 ? 'Niente in archivio.' : 'Nessun prodotto trovato.'}</p>
+          )}
         </div>
         <div className="row">
           <button className="ghost" onClick={onQuick}>Pasto veloce</button>
@@ -1196,7 +1252,15 @@ function Cibo({ s, setS }: { s: State; setS: (u: State) => void }) {
 function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
   const tot = nutritionToday(s.meals, today())
   const wt = waterToday(s.water, today()), wg = waterGoal(s)
-  const addWater = (ml: number) => setS({ ...s, water: [...s.water, { date: today(), ml }] })
+  // un'unica voce acqua per oggi: così posso aggiungere, togliere o correggere il totale
+  const setWater = (ml: number) => {
+    const v = Math.max(0, Math.round(ml))
+    setS({ ...s, water: [...s.water.filter((x) => x.date !== today()), ...(v > 0 ? [{ date: today(), ml: v }] : [])] })
+  }
+  const setWaterExact = async () => {
+    const v = await promptDlg('Acqua di oggi', [{ label: 'Millilitri totali', value: String(wt) }])
+    if (v) setWater(parseInt(v[0], 10) || 0)
+  }
   const [picker, setPicker] = useState<MealType | null>(null)
   const foods = [...FOODS, ...s.customFoods]
   const typeLabel = MEAL_TYPES.find((t) => t.key === picker)?.label ?? ''
@@ -1232,15 +1296,19 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
   const delMeal = (i: number) => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })
   const addPlanItem = (type: MealType, item: { name: string; grams: number }) =>
     setS({ ...s, meals: [...s.meals, planItemToMeal(item, type, s.customFoods)] })
+  // Alimento esterno (barcode o OpenFoodFacts): chiedi grammi, salva in archivio, logga
+  const addExternal = async (f: Food) => {
+    const g = await askGrams(f.name) ?? 100
+    const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === f.name.toLowerCase())
+    setS({ ...s, customFoods: exists ? s.customFoods : [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
+    setPicker(null)
+  }
   const onBarcode = async (code: string) => {
     toast('Cerco il prodotto…')
     let f: Food | null = null
     try { f = await fetchFoodByBarcode(code) } catch { /* rete assente */ }
     if (!f) return toast('Prodotto non trovato. Prova un altro codice o inseriscilo a mano.')
-    const g = await askGrams(f.name) ?? 100
-    const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === f!.name.toLowerCase())
-    setS({ ...s, customFoods: exists ? s.customFoods : [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
-    setPicker(null)
+    addExternal(f)
   }
   const editGoals = async () => {
     const v = await promptDlg('Obiettivi giornalieri', [
@@ -1275,12 +1343,18 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <Bar v={wt} max={wg} color="var(--blue)" label="Acqua" unit="ml" />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="ghost" onClick={() => addWater(250)}>+250 ml</button>
-          <button className="ghost" onClick={() => addWater(500)}>+500 ml</button>
+        <div className="waterhead">
+          <div className="num" style={{ fontSize: 26, fontWeight: 800 }}>{(wt / 1000).toFixed(1).replace('.', ',')} <span className="sm mut">/ {(wg / 1000).toFixed(1).replace('.', ',')} L</span></div>
+          <button className="pen" style={{ width: 36, height: 36, fontSize: 15 }} onClick={setWaterExact} title="Imposta"><Gear size={16} /></button>
         </div>
-        {wg > 2500 && <p className="sm mut" style={{ margin: '8px 2px 0' }}>Obiettivo <b style={{ color: 'var(--blue)' }}>+700 ml</b> oggi: ti alleni, servono più liquidi.</p>}
+        <div className="bt" style={{ height: 8, marginTop: 8 }}><i style={{ width: Math.min(100, wg ? wt / wg * 100 : 0) + '%', background: 'var(--blue)' }} /></div>
+        <div className="waterbtns">
+          <button className="wbtn minus" onClick={() => setWater(wt - 500)}>−500</button>
+          <button className="wbtn minus" onClick={() => setWater(wt - 250)}>−250</button>
+          <button className="wbtn" onClick={() => setWater(wt + 250)}>+250</button>
+          <button className="wbtn" onClick={() => setWater(wt + 500)}>+500</button>
+        </div>
+        {wg > 2500 && <p className="sm mut" style={{ margin: '10px 2px 0' }}>Obiettivo <b style={{ color: 'var(--blue)' }}>+700 ml</b> oggi: ti alleni, servono più liquidi.</p>}
       </div>
 
       {MEAL_TYPES.map(({ key, label }) => {
@@ -1334,7 +1408,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
 
       {picker && (
         <FoodPicker foods={foods} typeLabel={typeLabel} onClose={() => setPicker(null)}
-          onPick={pickFood} onCreate={createFood} onQuick={quickMeal} onBarcode={onBarcode} />
+          onPick={pickFood} onCreate={createFood} onQuick={quickMeal} onBarcode={onBarcode} onAddExternal={addExternal} />
       )}
     </>
   )
@@ -1619,9 +1693,18 @@ function Calendario({ s, onRepeat }: { s: State; onRepeat: (date: string) => voi
   const monthVol = s.log.filter((l) => monthDates.includes(l.date)).reduce((a, l) => a + l.kg * l.reps, 0)
   const selSum = sel ? sessionSummary(s.log, sel) : null
   const selExs = sel ? [...new Set(s.log.filter((l) => l.date === sel).map((x) => x.ex))] : []
+  const rpes = s.log.filter((l) => l.rpe != null).map((l) => l.rpe as number)
+  const avgRpe = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : 0
   return (
     <>
-      <div className="bc" style={{ marginTop: 14 }}>
+      <h2>Panoramica</h2>
+      <div className="tiles">
+        <div className="tile"><div className="l">Sedute totali</div><div className="v num">{totalWorkouts(s.log)}</div></div>
+        <div className="tile"><div className="l">Serie di fila</div><div className="v num">{streak(s.log)} <span className="sm mut">gg</span></div></div>
+        <div className="tile"><div className="l">Sollevato in tutto</div><div className="v num">{fmt(totalTonnage(s.log) / 1000)} <span className="sm mut">t</span></div></div>
+        <div className="tile"><div className="l">RPE medio</div><div className="v num">{avgRpe ? fmt(avgRpe) : '—'}</div></div>
+      </div>
+      <div className="bc" style={{ marginTop: 16 }}>
         <button className="back" onClick={() => { setOff(off - 1); setSel(null) }}>‹</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div className="bt1" style={{ fontSize: 18, textTransform: 'capitalize' }}>{monthName}</div>
@@ -1708,11 +1791,11 @@ function Coach({ s }: { s: State }) {
   )
 }
 
-function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAllena: () => void }) {
+function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
   const first = s.body.length ? s.body[0].kg : cur
   const [w, setW] = useState('')
-  const [sub, setSub] = useState<'profilo' | 'stats' | 'cal' | 'set'>('profilo')
+  const [sub, setSub] = useState<'profilo' | 'stats' | 'set'>('profilo')
   const [statsEx, setStatsEx] = useState<string | null>(null)
   useTop(sub)
   const goalCur = bestE1rm(s.log, s.goal.ex)
@@ -1724,22 +1807,11 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
     setS({ ...s, body: [...s.body.filter((b) => b.date !== today()), { date: today(), kg: +w }] })
     setW('')
   }
-  const repeatDay = (date: string) => {
-    const sets = s.log.filter((l) => l.date === date)
-    const already = new Set([...curItems(s).map((i) => i.ex), ...s.extras.filter((e) => e.date === today()).map((e) => e.item.ex)])
-    const items = [...new Set(sets.map((x) => x.ex))].filter((ex) => !already.has(ex)).map((ex) => {
-      const v = sets.filter((x) => x.ex === ex)
-      return { ex, sets: v.length, reps: Math.round(v.reduce((a, x) => a + x.reps, 0) / v.length), rest: 120, muscle: muscleOf(s, ex) }
-    })
-    setS({ ...s, extras: [...s.extras, ...items.map((item) => ({ date: today(), item }))] })
-    toast('Seduta copiata in oggi')
-    goAllena()
-  }
 
   return (
     <>
       <div className="seg" style={{ marginTop: 4 }}>
-        {([['profilo', 'Profilo'], ['stats', 'Stats'], ['cal', 'Calend.'], ['set', '']] as const).map(([k, l]) => (
+        {([['profilo', 'Profilo'], ['stats', 'Statistiche'], ['set', '']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>
             {k === 'set' ? <Gear size={18} /> : l}
           </button>
@@ -1747,7 +1819,6 @@ function Profilo({ s, setS, goAllena }: { s: State; setS: (u: State) => void; go
       </div>
 
       {sub === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
-      {sub === 'cal' && <Calendario s={s} onRepeat={repeatDay} />}
       {sub === 'set' && <Impostazioni s={s} setS={setS} />}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {sub !== 'profilo' ? null : (<>
