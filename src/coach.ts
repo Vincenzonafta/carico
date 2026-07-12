@@ -7,7 +7,7 @@ export type SetSpec = { type: SetType; reps: string; load?: string }
 export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
-export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number }
+export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number; ore?: number }
 export type MealType = 'colazione' | 'pranzo' | 'cena' | 'spuntino'
 export type Meal = { date: string; type: MealType; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }
 export type Food = { name: string; cat: string; kcal: number; protein: number; carbs: number; fat: number } // valori per 100 g
@@ -471,7 +471,7 @@ export function seed(): State {
     }],
     activeScheda: 0, activeDay: 0,
     customExercises: [], extras: [],
-    checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3 },
+    checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },
       { date: d(9), sonno: 7, energia: 7, doms: 3, stress: 2 },

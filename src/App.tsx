@@ -235,14 +235,23 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
     const c = { ...s.checkin, [k]: v, date: today() }
     setS({ ...s, checkin: c, checkins: [...s.checkins.filter((x) => x.date !== today()), c] })
   }
+  const setSleep = (oreRaw: number) => {
+    const ore = Math.max(0, Math.min(14, Math.round(oreRaw * 2) / 2))
+    const sonno = Math.max(0, Math.min(10, Math.round(ore / 8 * 10 * 2) / 2))
+    const c = { ...s.checkin, ore, sonno, date: today() }
+    setS({ ...s, checkin: c, checkins: [...s.checkins.filter((x) => x.date !== today()), c] })
+  }
   const sliders: [keyof State['checkin'], string][] = [
-    ['sonno', 'Sonno'], ['energia', 'Energia'], ['doms', 'Indolenzimento (DOMS)'], ['stress', 'Stress'],
+    ['energia', 'Energia'], ['doms', 'Indolenzimento (DOMS)'], ['stress', 'Stress'],
   ]
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
   const rCol = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
   const rHead = r >= 80 ? 'Giornata da spingere' : r >= 65 ? 'Giornata nella norma' : 'Meglio andarci piano'
+  const ciToday = s.checkin.date === today()
+  const ore = s.checkin.ore ?? 7.5
+  const rHist = [...s.checkins].sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-8).map(readiness)
 
   const day = curDay(s)
   const items = curItems(s)
@@ -259,10 +268,18 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
   const tot = nutritionToday(s.meals, today())
   const wt = waterToday(s.water, today()), wg = waterGoal(s)
+  const kcalLeft = s.target.kcal - tot.kcal
+
+  const mv = muscleVolume(s)
+  const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
+  const under = mvEntries.filter(([, n]) => n < 8).map(([m]) => m)
+
+  const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
+  const first = s.body.length ? s.body[0].kg : cur
 
   const h = new Date().getHours()
   const hi = h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'
-  const nudge = s.checkin.date !== today()
+  const nudge = !ciToday
     ? 'Fai il check-in di oggi: 20 secondi e i pesi proposti diventano affidabili.'
     : r < 65 ? `Readiness ${r}/100: ho ridotto i carichi del 10%, punta a serie pulite.`
     : weeklyReport(s).scarico ? 'Fatica in accumulo su un fondamentale: valuta una settimana di scarico.'
@@ -274,18 +291,43 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
       <div className="card ready">
         <Ring v={r} color={rCol} />
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div className="rl" style={{ color: rCol }}>{rLabel} · READINESS</div>
           <div className="rh">{rHead}</div>
           <div className="rd">{nudge}</div>
         </div>
       </div>
+      {rHist.length >= 2 && (
+        <div className="card" style={{ marginTop: 10, paddingBottom: 8 }}>
+          <div className="mono sm mut" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' }}>Andamento readiness</div>
+          <Sparkline values={rHist} color={rCol} h={48} />
+        </div>
+      )}
 
       <div className="tiles" style={{ marginTop: 10 }}>
         <div className="tile"><div className="l">Streak</div><div className="v num">{st} <span className="sm mut">gg</span></div></div>
         <div className="tile"><div className="l">Settimana</div><div className="v num">{weekSessions} <span className="sm mut">sedute</span></div></div>
         <div className="tile"><div className="l">Volume 7gg</div><div className="v num">{fmt(weekTon / 1000)} <span className="sm mut">t</span></div></div>
         <div className="tile"><div className="l">Livello</div><div className="v num">{lvl.n}</div></div>
+      </div>
+
+      <h2>Come stai oggi</h2>
+      <div className="card">
+        <div className="sleepbox">
+          <button className="qbtn" onClick={() => setSleep(ore - 0.5)}>−</button>
+          <div className="sleepval">
+            <div className="num" style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{fmt(ore)}<span className="sm mut"> h</span></div>
+            <div className="l" style={{ marginTop: 4 }}>ore di sonno</div>
+          </div>
+          <button className="qbtn" onClick={() => setSleep(ore + 0.5)}>＋</button>
+        </div>
+        {sliders.map(([k, lab]) => (
+          <div className="sl" key={k}>
+            <div className="top"><b>{lab}</b><span className="val num">{s.checkin[k]}/10</span></div>
+            <input type="range" min={0} max={10} step={1} value={s.checkin[k]}
+              onChange={(e) => set(k, +e.target.value)} />
+          </div>
+        ))}
       </div>
 
       <h2>Seduta di oggi</h2>
@@ -325,21 +367,53 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
       <h2>Nutrizione di oggi</h2>
       <div className="card">
-        <Bar v={tot.kcal} max={s.target.kcal} color="var(--lime)" label="Kcal" unit="" />
-        <Bar v={tot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" unit="g" />
-        <Bar v={wt} max={wg} color="var(--blue)" label="Acqua" unit="ml" />
+        <div className="kcalhead">
+          <div>
+            <div className="kcalbig num" style={{ color: kcalLeft < 0 ? 'var(--coral)' : 'var(--chalk)' }}>{Math.abs(Math.round(kcalLeft))}</div>
+            <div className="l">{kcalLeft < 0 ? 'kcal oltre il target' : 'kcal rimaste'}</div>
+          </div>
+          <div className="kcalsub num">{Math.round(tot.kcal)} <span className="mut">/ {s.target.kcal}</span></div>
+        </div>
+        <div className="macros">
+          <MacroRing v={tot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" />
+          <MacroRing v={tot.carbs} max={s.target.carbs} color="var(--amber)" label="Carbo" />
+          <MacroRing v={tot.fat} max={s.target.fat} color="#A78BFA" label="Grassi" />
+        </div>
+        <div style={{ marginTop: 12 }}><Bar v={wt} max={wg} color="var(--blue)" label="Acqua" unit="ml" /></div>
       </div>
 
-      <h2>Check-in di oggi</h2>
-      <div className="card">
-        {sliders.map(([k, lab]) => (
-          <div className="sl" key={k}>
-            <div className="top"><b>{lab}</b><span className="val num">{s.checkin[k]}/10</span></div>
-            <input type="range" min={0} max={10} step={1} value={s.checkin[k]}
-              onChange={(e) => set(k, +e.target.value)} />
+      {mvEntries.length > 0 && (<>
+        <h2>Volume settimanale · per gruppo</h2>
+        <div className="card">
+          {mvEntries.map(([m, n]) => (
+            <div className="bar" key={m}>
+              <span className="bn" style={{ color: mcolor(m) }}>{m}</span>
+              <div className="bt"><i style={{ width: Math.min(100, n / 16 * 100) + '%', background: n < 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
+              <span className="bv num">{n} serie</span>
+            </div>
+          ))}
+          <p className="hint">Target 10–20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = sotto quota</p>
+        </div>
+      </>)}
+
+      {s.body.length >= 2 && (<>
+        <h2>Andamento peso</h2>
+        <div className="card">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ fontSize: 28, fontWeight: 800 }} className="num">{fmt(cur)}<span className="sm mut"> kg</span></div>
+            <span className="delta num">{cur - first >= 0 ? '▲ +' : '▼ '}{fmt(cur - first)} kg</span>
           </div>
-        ))}
-      </div>
+          <Sparkline values={s.body.map((b) => b.kg)} color="#31E0B4" h={50} />
+        </div>
+      </>)}
+
+      <h2>Consiglio del coach</h2>
+      <div className="msg"><div className="who">Carico Coach</div>{nudge}</div>
+      {under.length > 0 && (
+        <div className="msg" style={{ marginTop: 8 }}><div className="who">Carico Coach</div>
+          Questa settimana <b>{under.join(', ')}</b> {under.length === 1 ? 'è' : 'sono'} sotto quota: aggiungi 1–2 esercizi per recuperare volume.
+        </div>
+      )}
     </>
   )
 }
