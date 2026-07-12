@@ -62,6 +62,11 @@ const MenuIcon = ({ t }: { t: 'swap' | 'reorder' | 'link' }) => {
   }
   return <svg viewBox="0 0 24 24" className="misvg">{p[t].map((d, i) => <path key={i} d={d} />)}</svg>
 }
+const Clock = () => (
+  <svg viewBox="0 0 24 24" className="misvg" style={{ width: 15, height: 15 }}>
+    <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" />
+  </svg>
+)
 
 const LS = 'carico-v1'
 function load(): State {
@@ -154,6 +159,7 @@ export default function App() {
         ))}
       </nav>
       <DialogHost />
+      <div className="rotate"><span className="ri">📱</span>Gira il telefono in verticale</div>
     </div>
   )
 }
@@ -692,10 +698,11 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
           {order.map((idx, pos) => {
             const it = plan[idx]
             const dragging = drag?.pos === pos
-            const y = dragging ? drag!.rel - ROW / 2 : pos * ROW
+            const VIS = ROW - 10 // 10px di aria tra un box e l'altro
+            const y = dragging ? drag!.rel - ROW / 2 : pos * ROW + 5
             return (
               <div key={idx} className={'reorow' + (dragging ? ' dragging' : '')}
-                style={{ transform: `translateY(${y}px)`, height: ROW }}>
+                style={{ transform: `translateY(${y}px)`, height: VIS }}>
                 <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
                 <span className="draghandle" onPointerDown={(e) => down(e, pos)}>≡</span>
@@ -915,7 +922,7 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
               {isExtra && done === 0 && <span className="del" onClick={() => removeExtra(it.ex)}>✕</span>}
             </div>
             <button className="restchip" onClick={() => setRestPick({ ex: it.ex, isExtra })}>
-              <span className="ic">⏱</span> Riposo <b className="num">{mmss(it.rest)}</b>
+              <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
             </button>
             {sps.map((sp, i) => {
               if (i < done) {

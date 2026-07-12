@@ -13,3 +13,6 @@ createRoot(document.getElementById('root')!).render(
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {}))
 }
+
+// Blocco verticale: il manifest lo impone nell'app installata; qui provo anche l'API (Android)
+try { (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('portrait').catch(() => {}) } catch { /* non supportato */ }
