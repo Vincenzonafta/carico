@@ -391,6 +391,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   font-size:19px; line-height:1; background:rgba(201,249,78,.14); color:var(--lime); border:1px solid rgba(201,249,78,.3); }
 .mealcard { padding:4px 12px; }
 .set.proposed { cursor:pointer; opacity:.72; }
+
+/* scanner codice a barre */
+.scanbtn { width:52px; height:50px; flex:none; padding:0; border-radius:11px; display:flex; align-items:center; justify-content:center;
+  background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); }
+.scanbox .scanview { position:relative; margin-top:12px; border-radius:14px; overflow:hidden; background:#000; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; }
+.scanbox .scanview video { width:100%; height:100%; object-fit:cover; }
+.scanbox .scanhint { position:absolute; padding:0 20px; text-align:center; }
+.scanframe { position:absolute; left:12%; right:12%; top:38%; height:24%; border:2px solid var(--lime); border-radius:10px; box-shadow:0 0 0 2000px rgba(0,0,0,.25); }
 .set.proposed .ex { font-style:italic; }
 .set.proposed .meta { color:var(--lime); font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; }
 

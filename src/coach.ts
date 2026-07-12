@@ -167,6 +167,27 @@ export const mealFromFood = (f: Food, grams: number, type: MealType): Meal => ({
   fat: Math.round(f.fat * grams / 10) / 10,
 })
 
+// Cerca un prodotto per codice a barre su OpenFoodFacts (database aperto, senza chiave)
+export async function fetchFoodByBarcode(code: string): Promise<Food | null> {
+  const c = code.replace(/\D/g, '')
+  if (!c) return null
+  const url = `https://world.openfoodfacts.org/api/v2/product/${c}.json?fields=product_name,product_name_it,brands,nutriments`
+  const r = await fetch(url)
+  if (!r.ok) return null
+  const j = await r.json()
+  if (j.status !== 1 || !j.product) return null
+  const n = j.product.nutriments || {}
+  const r1 = (x: number) => Math.round((x || 0) * 10) / 10
+  const kcal = n['energy-kcal_100g'] ?? (n['energy_100g'] ? n['energy_100g'] / 4.184 : 0)
+  const nm = j.product.product_name_it || j.product.product_name || 'Prodotto'
+  const brand = j.product.brands ? String(j.product.brands).split(',')[0].trim() : ''
+  return {
+    name: brand && !nm.toLowerCase().includes(brand.toLowerCase()) ? `${nm} · ${brand}` : nm,
+    cat: 'Altro', kcal: Math.round(kcal || 0),
+    protein: r1(n.proteins_100g), carbs: r1(n.carbohydrates_100g), fat: r1(n.fat_100g),
+  }
+}
+
 // Trova un alimento per nome (esatto o parziale), fra archivio + personalizzati
 export function foodLookup(name: string, extra: Food[] = []): Food | null {
   const all = [...FOODS, ...extra]

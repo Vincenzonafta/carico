@@ -8,7 +8,7 @@ import {
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
   type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
-  foodLookup, planItemToMeal, parseMealPlan,
+  foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 
@@ -1073,11 +1073,62 @@ function MacroRing({ v, max, color, label }: { v: number; max: number; color: st
   )
 }
 
+const Barcode = () => (
+  <svg viewBox="0 0 24 24" className="misvg" style={{ width: 18, height: 18 }}>
+    <path d="M3 5v14M6.5 5v14M10 5v11M13 5v14M16.5 5v11M20 5v14" strokeWidth="1.6" />
+  </svg>
+)
+
+// Scanner codice a barre: BarcodeDetector nativo se c'è, con inserimento manuale come fallback
+function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [live, setLive] = useState(false)
+  const [manual, setManual] = useState('')
+  useEffect(() => {
+    const BD = (window as unknown as { BarcodeDetector?: new (o?: object) => { detect: (v: unknown) => Promise<{ rawValue: string }[]> } }).BarcodeDetector
+    if (!BD || !navigator.mediaDevices?.getUserMedia) return
+    let stream: MediaStream | null = null, stop = false
+    const det = new BD({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
+    ;(async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (!videoRef.current) return
+        videoRef.current.srcObject = stream; await videoRef.current.play(); setLive(true)
+        const scan = async () => {
+          if (stop || !videoRef.current) return
+          try { const codes = await det.detect(videoRef.current); if (codes.length) { onCode(codes[0].rawValue); return } } catch { /* frame saltato */ }
+          requestAnimationFrame(scan)
+        }
+        scan()
+      } catch { setLive(false) }
+    })()
+    return () => { stop = true; stream?.getTracks().forEach((t) => t.stop()) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="overlay center" onClick={onClose}>
+      <div className="dlg scanbox" onClick={(e) => e.stopPropagation()}>
+        <b className="dt">Codice a barre</b>
+        <div className="scanview">
+          <video ref={videoRef} muted playsInline />
+          {!live && <div className="scanhint sm mut">Inquadra il codice o inseriscilo a mano ↓</div>}
+          {live && <div className="scanframe" />}
+        </div>
+        <div className="row" style={{ marginTop: 12 }}>
+          <input value={manual} onChange={(e) => setManual(e.target.value)} inputMode="numeric" placeholder="Codice (es. 8001505005707)" />
+          <button style={{ width: 'auto', padding: '12px 16px' }} onClick={() => manual.trim() && onCode(manual.trim())}>Cerca</button>
+        </div>
+        <button className="ghost" style={{ marginTop: 8 }} onClick={onClose}>Chiudi</button>
+      </div>
+    </div>
+  )
+}
+
 // Foglio archivio alimenti: cerca + filtra per categoria, tap per aggiungere
-function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick }: {
+function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick, onBarcode }: {
   foods: Food[]; typeLabel: string
-  onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void
+  onPick: (f: Food) => void; onClose: () => void; onCreate: () => void; onQuick: () => void; onBarcode: (code: string) => void
 }) {
+  const [scan, setScan] = useState(false)
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<string | null>(null)
   const list = foods
@@ -1093,7 +1144,10 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick }: {
           </div>
           <button className="pen" onClick={onClose}>✕</button>
         </div>
-        <input placeholder="Cerca alimento…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
+        <div className="row">
+          <input placeholder="Cerca alimento…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
+          <button className="scanbtn" onClick={() => setScan(true)} title="Codice a barre"><Barcode /></button>
+        </div>
         <div className="chips scrollx">
           <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat(null)}>Tutti</button>
           {FOOD_CATS.map((c) => (
@@ -1118,6 +1172,7 @@ function FoodPicker({ foods, typeLabel, onPick, onClose, onCreate, onQuick }: {
           <button className="ghost" onClick={onCreate}>+ Nuovo alimento</button>
         </div>
       </div>
+      {scan && <BarcodeScanner onClose={() => setScan(false)} onCode={(code) => { setScan(false); onBarcode(code) }} />}
     </div>
   )
 }
@@ -1177,6 +1232,16 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
   const delMeal = (i: number) => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })
   const addPlanItem = (type: MealType, item: { name: string; grams: number }) =>
     setS({ ...s, meals: [...s.meals, planItemToMeal(item, type, s.customFoods)] })
+  const onBarcode = async (code: string) => {
+    toast('Cerco il prodotto…')
+    let f: Food | null = null
+    try { f = await fetchFoodByBarcode(code) } catch { /* rete assente */ }
+    if (!f) return toast('Prodotto non trovato. Prova un altro codice o inseriscilo a mano.')
+    const g = await askGrams(f.name) ?? 100
+    const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === f!.name.toLowerCase())
+    setS({ ...s, customFoods: exists ? s.customFoods : [...s.customFoods, f], meals: [...s.meals, mealFromFood(f, g, picker!)] })
+    setPicker(null)
+  }
   const editGoals = async () => {
     const v = await promptDlg('Obiettivi giornalieri', [
       { label: 'Calorie (kcal)', value: String(s.target.kcal) }, { label: 'Proteine g', value: String(s.target.protein) },
@@ -1269,7 +1334,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
 
       {picker && (
         <FoodPicker foods={foods} typeLabel={typeLabel} onClose={() => setPicker(null)}
-          onPick={pickFood} onCreate={createFood} onQuick={quickMeal} />
+          onPick={pickFood} onCreate={createFood} onQuick={quickMeal} onBarcode={onBarcode} />
       )}
     </>
   )
