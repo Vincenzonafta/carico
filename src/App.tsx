@@ -1395,8 +1395,14 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
     setS({ ...s, water: [...s.water.filter((x) => x.date !== today()), ...(v > 0 ? [{ date: today(), ml: v }] : [])] })
   }
   const setWaterExact = async () => {
-    const v = await promptDlg('Acqua di oggi', [{ label: 'Millilitri totali', value: String(wt) }])
-    if (v) setWater(parseInt(v[0], 10) || 0)
+    const v = await promptDlg('Acqua', [
+      { label: 'Bevuta oggi (ml)', value: String(wt) },
+      { label: 'Obiettivo giornaliero (ml)', value: String(s.target.water ?? 2500) },
+    ])
+    if (!v) return
+    const goal = parseInt(v[1], 10) || (s.target.water ?? 2500)
+    const drank = Math.max(0, parseInt(v[0], 10) || 0)
+    setS({ ...s, target: { ...s.target, water: goal }, water: [...s.water.filter((x) => x.date !== today()), ...(drank > 0 ? [{ date: today(), ml: drank }] : [])] })
   }
   const [picker, setPicker] = useState<MealType | null>(null)
   const [detail, setDetail] = useState<{ food: Food; external: boolean } | null>(null)
@@ -1458,7 +1464,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       { label: 'Carboidrati g', value: String(s.target.carbs) }, { label: 'Grassi g', value: String(s.target.fat) },
     ])
     if (!v) return
-    setS({ ...s, target: { kcal: +v[0] || s.target.kcal, protein: +v[1] || s.target.protein, carbs: +v[2] || s.target.carbs, fat: +v[3] || s.target.fat } })
+    setS({ ...s, target: { ...s.target, kcal: +v[0] || s.target.kcal, protein: +v[1] || s.target.protein, carbs: +v[2] || s.target.carbs, fat: +v[3] || s.target.fat } })
   }
 
   const kcalLeft = s.target.kcal - tot.kcal

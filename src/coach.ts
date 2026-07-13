@@ -20,7 +20,7 @@ export type State = {
   customExercises: Exercise[]
   extras: { date: string; item: PlanItem }[]
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
-  meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number }
+  meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
   settings: { sound: boolean; vibrate: boolean }
@@ -277,7 +277,7 @@ export function muscleVolume(s: State, days = 7): Record<string, number> {
 export const waterToday = (w: Water[], date: string) =>
   w.filter((x) => x.date === date).reduce((a, x) => a + x.ml, 0)
 export function waterGoal(s: State) {
-  return 2500 + (s.log.some((l) => l.date === today()) ? 700 : 0)
+  return (s.target.water ?? 2500) + (s.log.some((l) => l.date === today()) ? 700 : 0)
 }
 
 // Adattamento dinamico: taglia la seduta se hai poco tempo
@@ -489,7 +489,7 @@ export function seed(): State {
       { date: today(), type: 'pranzo', name: 'Riso e pollo', kcal: 780, protein: 62, carbs: 95, fat: 14 },
     ],
     customFoods: [],
-    target: { kcal: 2600, protein: 170, carbs: 280, fat: 80 },
+    target: { kcal: 2600, protein: 170, carbs: 280, fat: 80, water: 2500 },
     mealPlan: null,
     body: [
       { date: d(56), kg: 77.2 }, { date: d(42), kg: 77.6 }, { date: d(28), kg: 77.9 },
