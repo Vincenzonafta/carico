@@ -70,7 +70,8 @@ create table acqua (
   id        uuid primary key default gen_random_uuid(),
   utente_id uuid not null references utente (id) on delete cascade,
   data      date not null,
-  ml        int not null
+  ml        int not null,
+  unique (utente_id, data)                -- una riga (totale) per giorno: upsert
 );
 
 -- Fase alimentare/di programma: carica, scarica, mantenimento. data_fine null = fase attuale.

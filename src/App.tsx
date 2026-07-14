@@ -12,7 +12,7 @@ import {
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
-import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState } from './data/sync'
+import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati } from './data/sync'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -248,15 +248,15 @@ function Ring({ v, color }: { v: number; color: string }) {
 
 function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAllena: () => void }) {
   const [minutes, setMinutes] = useState(60)
-  const set = (k: keyof State['checkin'], v: number) => {
-    const c = { ...s.checkin, [k]: v, date: today() }
+  const commitCheckin = (c: State['checkin']) => {
     setS({ ...s, checkin: c, checkins: [...s.checkins.filter((x) => x.date !== today()), c] })
+    checkinSalvato(c) // specchio cloud: upsert per giorno
   }
+  const set = (k: keyof State['checkin'], v: number) => commitCheckin({ ...s.checkin, [k]: v, date: today() })
   const setSleep = (oreRaw: number) => {
     const ore = Math.max(0, Math.min(14, Math.round(oreRaw * 2) / 2))
     const sonno = Math.max(0, Math.min(10, Math.round(ore / 8 * 10 * 2) / 2))
-    const c = { ...s.checkin, ore, sonno, date: today() }
-    setS({ ...s, checkin: c, checkins: [...s.checkins.filter((x) => x.date !== today()), c] })
+    commitCheckin({ ...s.checkin, ore, sonno, date: today() })
   }
   const sliders: [keyof State['checkin'], string][] = [
     ['energia', 'Energia'], ['doms', 'Indolenzimento (DOMS)'], ['stress', 'Stress'],
@@ -1422,6 +1422,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
   const setWater = (ml: number) => {
     const v = Math.max(0, Math.round(ml))
     setS({ ...s, water: [...s.water.filter((x) => x.date !== today()), ...(v > 0 ? [{ date: today(), ml: v }] : [])] })
+    acquaSalvata(today(), v)
   }
   const setWaterExact = async () => {
     const v = await promptDlg('Acqua', [
@@ -1432,6 +1433,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
     const goal = parseInt(v[1], 10) || (s.target.water ?? 2500)
     const drank = Math.max(0, parseInt(v[0], 10) || 0)
     setS({ ...s, target: { ...s.target, water: goal }, water: [...s.water.filter((x) => x.date !== today()), ...(drank > 0 ? [{ date: today(), ml: drank }] : [])] })
+    acquaSalvata(today(), drank)
   }
   const [picker, setPicker] = useState<MealType | null>(null)
   const [detail, setDetail] = useState<{ food: Food; external: boolean } | null>(null)
@@ -1457,7 +1459,9 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
     if (!detail || !picker) return
     const { food, external } = detail
     const exists = [...FOODS, ...s.customFoods].some((x) => x.name.toLowerCase() === food.name.toLowerCase())
-    setS({ ...s, customFoods: external && !exists ? [...s.customFoods, food] : s.customFoods, meals: [...s.meals, mealFromFood(food, grams, picker)] })
+    const nm = [...s.meals, mealFromFood(food, grams, picker)]
+    setS({ ...s, customFoods: external && !exists ? [...s.customFoods, food] : s.customFoods, meals: nm })
+    pastiOggiAggiornati(nm, today())
     setDetail(null); setPicker(null)
   }
   const createFood = async () => {
@@ -1474,12 +1478,22 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       { label: 'Proteine g' }, { label: 'Carboidrati g' }, { label: 'Grassi g' },
     ])
     const name = v?.[0]?.trim(); if (!name) return
-    setS({ ...s, meals: [...s.meals, { date: today(), type: picker!, name, kcal: +v![1] || 0, protein: +v![2] || 0, carbs: +v![3] || 0, fat: +v![4] || 0 }] })
+    const nm = [...s.meals, { date: today(), type: picker!, name, kcal: +v![1] || 0, protein: +v![2] || 0, carbs: +v![3] || 0, fat: +v![4] || 0 }]
+    setS({ ...s, meals: nm })
+    pastiOggiAggiornati(nm, today())
     setPicker(null)
   }
-  const delMeal = (i: number) => setS({ ...s, meals: s.meals.filter((_, j) => j !== i) })
-  const addPlanItem = (type: MealType, item: { name: string; grams: number }) =>
-    setS({ ...s, meals: [...s.meals, planItemToMeal(item, type, s.customFoods)] })
+  const delMeal = (i: number) => {
+    const d = s.meals[i]?.date ?? today()
+    const nm = s.meals.filter((_, j) => j !== i)
+    setS({ ...s, meals: nm })
+    pastiOggiAggiornati(nm, d) // rimpiazza nel cloud i pasti di quel giorno
+  }
+  const addPlanItem = (type: MealType, item: { name: string; grams: number }) => {
+    const nm = [...s.meals, planItemToMeal(item, type, s.customFoods)]
+    setS({ ...s, meals: nm })
+    pastiOggiAggiornati(nm, today())
+  }
   const onBarcode = async (code: string) => {
     toast('Cerco il prodotto…')
     let f: Food | null = null
@@ -1701,7 +1715,9 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
     const add = s.mealPlan.slots.flatMap((sl) => sl.items.filter((it) => !already.has(it.name.toLowerCase()))
       .map((it) => planItemToMeal(it, sl.type, s.customFoods)))
     if (!add.length) return toast('Pasti del piano già presenti oggi')
-    setS({ ...s, meals: [...s.meals, ...add] }); toast(`${add.length} pasti aggiunti a oggi`)
+    const nm = [...s.meals, ...add]
+    setS({ ...s, meals: nm }); toast(`${add.length} pasti aggiunti a oggi`)
+    pastiOggiAggiornati(nm, today())
   }
   const plan = s.mealPlan
   return (
@@ -2004,6 +2020,7 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const addW = () => {
     if (!w) return
     setS({ ...s, body: [...s.body.filter((b) => b.date !== today()), { date: today(), kg: +w }] })
+    pesoSalvato(today(), +w)
     setW('')
   }
 

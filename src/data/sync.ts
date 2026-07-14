@@ -6,8 +6,10 @@ import { supa } from './client'
 
 type Op =
   | { op: 'ins'; t: string; row: Record<string, unknown> }
+  | { op: 'ups'; t: string; row: Record<string, unknown>; onConflict: string }
   | { op: 'upd'; t: string; id: string; patch: Record<string, unknown> }
   | { op: 'del'; t: string; id: string }
+  | { op: 'delday'; t: string; date: string }
 
 const QK = 'carico-syncq'
 const q: Op[] = JSON.parse(localStorage.getItem(QK) ?? '[]')
@@ -30,11 +32,17 @@ export async function flush() {
     while (q.length) {
       const o = q[0]
       const r = o.op === 'ins' ? await supa.from(o.t).insert({ utente_id: uid, ...o.row })
+        : o.op === 'ups' ? await supa.from(o.t).upsert({ utente_id: uid, ...o.row }, { onConflict: o.onConflict })
         : o.op === 'upd' ? await supa.from(o.t).update(o.patch).eq('id', o.id)
+        : o.op === 'delday' ? await supa.from(o.t).delete().eq('utente_id', uid).eq('data', o.date)
         : await supa.from(o.t).delete().eq('id', o.id)
-      if (r.error && r.error.code !== '23505') { // 23505 = già inserita (flush doppio): ok
-        console.warn('[sync]', o.t, r.error.message)
-        break // offline o errore: la coda resta, si riprova al prossimo flush
+      if (r.error) {
+        if (!r.error.code) { // nessun codice = probabile assenza di rete: tengo la coda e riprovo dopo
+          console.warn('[sync] rete?', o.t, r.error.message); break
+        }
+        if (r.error.code !== '23505') // errore lato DB permanente per questa op (es. vincolo): scarto e proseguo, così non blocca il resto
+          console.warn('[sync] scartata', o.t, r.error.code, r.error.message)
+        // 23505 = già inserita (flush doppio): ok, proseguo
       }
       q.shift(); save()
     }
@@ -81,4 +89,30 @@ export function sessioneChiusa() {
   if (!sess) return
   enq({ op: 'upd', t: 'sessione', id: sess.id, patch: { fine: new Date().toISOString() } })
   sess = null; saveSess()
+}
+
+// --- Eventi giornalieri: upsert per giorno (una riga per data) ---
+export function checkinSalvato(c: { date: string; sonno?: number; energia?: number; doms?: number; stress?: number; ore?: number }) {
+  enq({ op: 'ups', t: 'checkin', onConflict: 'utente_id,data',
+    row: { data: c.date, sonno: c.sonno, energia: c.energia, doms: c.doms, stress: c.stress, ore: c.ore } })
+}
+export function pesoSalvato(date: string, kg: number) {
+  enq({ op: 'ups', t: 'peso_corporeo', onConflict: 'utente_id,data', row: { data: date, kg } })
+}
+export function acquaSalvata(date: string, ml: number) {
+  if (ml > 0) enq({ op: 'ups', t: 'acqua', onConflict: 'utente_id,data', row: { data: date, ml } })
+  else enq({ op: 'delday', t: 'acqua', date }) // azzerata: via la riga del giorno
+}
+
+// --- Pasti: multi-riga per giorno. Rimpiazzo l'intero giorno invece di tracciare id per riga. ---
+// ponytail: delday + insert a ogni modifica; se i pasti per giorno diventano molti si passa agli id.
+export function pastiOggiAggiornati(
+  meals: { date: string; type: string; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }[],
+  date: string,
+) {
+  enq({ op: 'delday', t: 'pasto', date })
+  for (const m of meals) if (m.date === date)
+    enq({ op: 'ins', t: 'pasto', row: {
+      data: m.date, tipo: m.type, nome: m.name,
+      kcal: m.kcal, prot: m.protein, carbo: m.carbs, grassi: m.fat, grammi: m.grams ?? null } })
 }
