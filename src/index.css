@@ -470,3 +470,15 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .installbar .ib-tx span { font-size:12px; color:var(--mut); margin-top:1px; line-height:1.35; }
 .installbar .ib-btn { width:auto; flex:none; padding:10px 15px; font-size:14px; border-radius:11px; }
 .installbar .ib-x { width:auto; flex:none; padding:8px; background:transparent; color:var(--mut2); font-size:15px; border:0; }
+
+/* ============ schermata login / benvenuto ============ */
+.authgate { position:fixed; inset:0; z-index:60; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+  padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
+.authbox { width:100%; max-width:360px; }
+.authbrand { display:flex; align-items:center; gap:8px; justify-content:center; margin-bottom:14px; }
+.authbrand .mark { font-size:26px; letter-spacing:.02em; }
+.authtag { text-align:center; color:var(--mut); font-size:14px; line-height:1.55; margin:0 4px 24px; }
+.linklike { background:transparent; color:var(--mut); font-weight:600; box-shadow:none; margin-top:10px; }
+.linklike:active { color:var(--chalk); }
+.linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }

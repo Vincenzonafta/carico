@@ -108,6 +108,15 @@ const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0)
 export default function App() {
   const [s, setS] = useState<State>(load)
   const [tab, setTab] = useState<Tab>('oggi')
+  // Gate login (offline-first): authed dal login Supabase, localMode = "usa senza account"
+  const [authed, setAuthed] = useState<boolean | null>(supa ? null : false)
+  const [localMode, setLocalMode] = useState(() => !!localStorage.getItem('carico-local'))
+  useEffect(() => {
+    if (!supa) return
+    supa.auth.getSession().then(({ data }) => setAuthed(!!data.session))
+    const { data: sub } = supa.auth.onAuthStateChange((_e, s2) => setAuthed(!!s2))
+    return () => sub.subscription.unsubscribe()
+  }, [])
   useEffect(() => {
     try { localStorage.setItem(LS, JSON.stringify(s)) } catch { /* ignora */ }
   }, [s])
@@ -139,6 +148,11 @@ export default function App() {
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
   const rColor = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
+
+  if (supa && authed === null)
+    return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
+  if (supa && !authed && !localMode)
+    return <AuthGate onLocal={() => { localStorage.setItem('carico-local', '1'); setLocalMode(true) }} />
 
   return (
     <div id="app" className={timer != null ? 'pad-timer' : ''}>
@@ -2088,13 +2102,60 @@ const Tog = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => (
   <button className={'tog' + (on ? ' on' : '')} onClick={() => set(!on)} aria-label={on ? 'Attivo' : 'Spento'}><i /></button>
 )
 
-// Account cloud: login/registrazione Supabase. Le serie si specchiano nel DB
-// (src/data/sync.ts): è la memoria da cui il coach IA leggerà.
-function Cloud() {
-  const [user, setUser] = useState<string | null>(null)
+// Form di autenticazione riusabile: gate a schermo intero e card in Profilo.
+// Toggle accedi/registrati; il post-login (chiusura gate + flush coda) avviene via onAuthStateChange.
+function AuthForm() {
+  const [mode, setMode] = useState<'in' | 'up'>('in')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
+  if (!supa) return null
+  const sb = supa
+  const go = async () => {
+    if (!email.trim() || pw.length < 6) return toast('Servono email e password (min 6 caratteri)')
+    setBusy(true)
+    const r = mode === 'in'
+      ? await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
+      : await sb.auth.signUp({ email: email.trim(), password: pw })
+    setBusy(false)
+    if (r.error) return toast(r.error.message)
+    if (mode === 'up' && !r.data.session) return toast('Ti ho mandato una mail: conferma l\'account e poi accedi')
+    toast(mode === 'up' ? 'Account creato ✓' : 'Bentornato ✓')
+  }
+  return (
+    <>
+      <input type="email" placeholder="email" autoComplete="email" inputMode="email"
+        value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input type="password" placeholder="password (min 6)" style={{ marginTop: 8 }}
+        autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+        value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
+      <button disabled={busy} style={{ marginTop: 12 }} onClick={go}>
+        {busy ? '…' : mode === 'in' ? 'Entra' : 'Crea account'}
+      </button>
+      <button className="linklike" disabled={busy} onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
+        {mode === 'in' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
+      </button>
+    </>
+  )
+}
+
+// Schermata di benvenuto a tutto schermo quando non sei loggato (offline-first: si può saltare).
+function AuthGate({ onLocal }: { onLocal: () => void }) {
+  return (
+    <div className="authgate">
+      <div className="authbox">
+        <div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div>
+        <p className="authtag">Il tuo coach di allenamento. Accedi per salvare i progressi nel cloud e sbloccare il coach IA.</p>
+        <AuthForm />
+        <button className="linklike skip" onClick={onLocal}>Usa senza account →</button>
+      </div>
+    </div>
+  )
+}
+
+// Card account in Profilo: stato + logout se loggato, altrimenti il form inline (per chi è in locale).
+function Cloud() {
+  const [user, setUser] = useState<string | null>(null)
   useEffect(() => {
     if (!supa) return
     supa.auth.getSession().then(({ data }) => setUser(data.session?.user.email ?? null))
@@ -2103,38 +2164,18 @@ function Cloud() {
   }, [])
   if (!supa) return (
     <div className="card"><p className="sm mut" style={{ margin: 0 }}>
-      Non configurato: copia <b>.env.example</b> in <b>.env.local</b>, incolla le chiavi del progetto Supabase e riavvia.
+      Cloud non configurato: metti le chiavi Supabase in <b>.env.local</b> e riavvia.
     </p></div>
   )
   const sb = supa
   if (user) return (
     <div className="card">
       <div className="mrow"><span>Connesso</span><b style={{ fontSize: 13 }}>{user}</b></div>
-      {pending() > 0 && <div className="mrow"><span>Serie in coda di invio</span><b className="num">{pending()}</b></div>}
+      {pending() > 0 && <div className="mrow"><span>Serie in coda</span><b className="num">{pending()}</b></div>}
       <button className="ghost" style={{ marginTop: 10 }} onClick={() => { void sb.auth.signOut(); toast('Disconnesso') }}>Esci</button>
     </div>
   )
-  const go = async (mode: 'in' | 'up') => {
-    if (!email.trim() || pw.length < 6) return toast('Servono email e password (min 6 caratteri)')
-    setBusy(true)
-    const r = mode === 'in'
-      ? await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
-      : await sb.auth.signUp({ email: email.trim(), password: pw })
-    setBusy(false)
-    if (r.error) return toast(r.error.message)
-    toast(mode === 'up' ? 'Account creato ✓' : 'Connesso ✓')
-  }
-  return (
-    <div className="card">
-      <p className="sm mut" style={{ marginTop: 0 }}>Con l'account le serie si salvano anche nel cloud: è la memoria che il coach IA leggerà.</p>
-      <input type="email" placeholder="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <input type="password" placeholder="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} style={{ marginTop: 8 }} />
-      <div className="row" style={{ marginTop: 10 }}>
-        <button disabled={busy} onClick={() => go('in')}>Entra</button>
-        <button className="ghost" disabled={busy} onClick={() => go('up')}>Crea account</button>
-      </div>
-    </div>
-  )
+  return <div className="card"><AuthForm /></div>
 }
 
 function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
