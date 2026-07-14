@@ -1061,6 +1061,7 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
     if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
     setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()) })
   }
+  const chiudiSummary = () => { setSummary(null); setWorkoutStart(null); sessioneChiusa() }
 
   if (!items.length) return (
     <>
@@ -1203,21 +1204,23 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
 
       {summary && (
-        <div className="card done">
-          <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
-          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>Sessione completata</div>
-          <div className="tiles" style={{ marginTop: 12 }}>
-            <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(summary.tonnage / 1000)} <span className="sm mut">t</span></div></div>
-            <div className="tile"><div className="l">Serie</div><div className="v num">{summary.sets}</div></div>
-            <div className="tile"><div className="l">RPE medio</div><div className="v num">{summary.avgRpe ? fmt(summary.avgRpe) : '—'}</div></div>
-            <div className="tile"><div className="l">Record</div><div className="v num" style={{ color: summary.prs.length ? 'var(--amber)' : undefined }}>{summary.prs.length}</div></div>
-          </div>
-          {summary.prs.map((ex) => (
-            <div className="prband" key={ex}>
-              <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
+        <div className="overlay center" onClick={chiudiSummary}>
+          <div className="card done" style={{ maxWidth: 394, width: '100%', margin: 0 }} onClick={(e) => e.stopPropagation()}>
+            <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
+            <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>Sessione completata</div>
+            <div className="tiles" style={{ marginTop: 12 }}>
+              <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(summary.tonnage / 1000)} <span className="sm mut">t</span></div></div>
+              <div className="tile"><div className="l">Serie</div><div className="v num">{summary.sets}</div></div>
+              <div className="tile"><div className="l">RPE medio</div><div className="v num">{summary.avgRpe ? fmt(summary.avgRpe) : '—'}</div></div>
+              <div className="tile"><div className="l">Record</div><div className="v num" style={{ color: summary.prs.length ? 'var(--amber)' : undefined }}>{summary.prs.length}</div></div>
             </div>
-          ))}
-          <button style={{ marginTop: 12 }} onClick={() => { setSummary(null); setWorkoutStart(null); sessioneChiusa() }}>Chiudi</button>
+            {summary.prs.map((ex) => (
+              <div className="prband" key={ex}>
+                <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
+              </div>
+            ))}
+            <button style={{ marginTop: 12 }} onClick={chiudiSummary}>Chiudi</button>
+          </div>
         </div>
       )}
     </>
