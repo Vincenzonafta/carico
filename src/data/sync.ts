@@ -23,12 +23,19 @@ let logged = false
 export const cloudState = (): 'off' | 'anon' | 'on' => !supa ? 'off' : logged ? 'on' : 'anon'
 
 let flushing = false
+let utenteOk = false // il profilo utente esiste nel cloud (è la FK di tutte le tabelle)
 export async function flush() {
   if (!supa || flushing) return
   flushing = true
   try {
-    const uid = (await supa.auth.getSession()).data.session?.user.id
+    const sess = (await supa.auth.getSession()).data.session
+    const uid = sess?.user.id
     if (!uid) return
+    if (!utenteOk) { // il profilo DEVE esistere prima di ogni insert, o il vincolo FK rifiuta e il dato va perso
+      const r = await supa.from('utente').upsert({ id: uid, nome: sess!.user.email })
+      if (r.error) { console.warn('[sync] utente', r.error.message); return } // riprovo al prossimo flush
+      utenteOk = true
+    }
     while (q.length) {
       const o = q[0]
       const r = o.op === 'ins' ? await supa.from(o.t).insert({ utente_id: uid, ...o.row })
@@ -52,8 +59,8 @@ export async function flush() {
 window.addEventListener('online', () => void flush())
 supa?.auth.onAuthStateChange((_e, sess) => {
   logged = !!sess?.user
-  // al login: assicura il profilo, poi svuota la coda accumulata
-  if (sess?.user && supa) void supa.from('utente').upsert({ id: sess.user.id, nome: sess.user.email }).then(() => flush())
+  if (!sess?.user) utenteOk = false // al logout il prossimo login riverifica il profilo
+  if (sess?.user) void flush() // flush garantisce il profilo utente prima di spedire la coda
 })
 
 // --- Sessione di allenamento corrente ---

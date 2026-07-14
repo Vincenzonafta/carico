@@ -451,6 +451,21 @@ if (import.meta.env.DEV) {
   console.assert(itemReps({ ex: 'x', sets: 4, reps: 8, rest: 0, muscle: '', scheme: ramp }) === 5, 'itemReps salta il warmup')
 }
 
+// Stato vuoto: nuovo utente, nessun dato demo. Le cose le crea l'utente.
+export function emptyState(): State {
+  return {
+    schede: [], activeScheda: 0, activeDay: 0,
+    customExercises: [], extras: [],
+    checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
+    checkins: [], log: [],
+    meals: [], customFoods: [],
+    target: { kcal: 2600, protein: 170, carbs: 280, fat: 80, water: 2500 },
+    mealPlan: null,
+    body: [], goal: { ex: 'Panca piana', targetKg: 100 }, water: [],
+    settings: { sound: true, vibrate: true },
+  }
+}
+
 // Dati di esempio: 3 settimane di panca con RPE che sale = accumulo visibile
 export function seed(): State {
   const d = (n: number) => {

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
-  prsForSession, sessionSummary, weeklyReport, nutritionToday, seed,
+  prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
@@ -78,7 +78,7 @@ const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: de
 
 // Ricostruisce lo State locale dai dati scaricati dal cloud (gli eventi vincono sul seed).
 function statoDaCloud(cloud: NonNullable<Awaited<ReturnType<typeof pullAll>>>): State {
-  const base = seed()
+  const base = emptyState()
   return {
     ...base, ...(cloud.dati ?? {}),
     log: cloud.log, checkins: cloud.checkins,
@@ -96,14 +96,14 @@ function load(): State {
         p.schede = [{ name: 'La mia scheda', days: [{ name: 'Giorno 1', items: p.plan }] }]
         p.activeScheda = 0; p.activeDay = 0; delete p.plan
       }
-      const base = seed()
+      const base = emptyState()
       const m = { ...base, ...p } // i campi nuovi ereditano i default
       m.target = { ...base.target, ...(p.target ?? {}) } // carbo/grassi per i salvataggi vecchi
       m.settings = { ...base.settings, ...(p.settings ?? {}) }
       return m
     }
   } catch { /* storage non disponibile */ }
-  return seed()
+  return emptyState()
 }
 
 type Tab = 'oggi' | 'schede' | 'allena' | 'cibo' | 'coach' | 'profilo'
@@ -120,9 +120,8 @@ const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0)
 export default function App() {
   const [s, setS] = useState<State>(load)
   const [tab, setTab] = useState<Tab>('oggi')
-  // Gate login (offline-first): authed dal login Supabase, localMode = "usa senza account"
+  // Login obbligatorio: authed dalla sessione Supabase (nessuna modalità locale).
   const [authed, setAuthed] = useState<boolean | null>(supa ? null : false)
-  const [localMode, setLocalMode] = useState(() => !!localStorage.getItem('carico-local'))
   const [synced, setSynced] = useState(false) // decisione pull/push al login completata
   const sRef = useRef(s); sRef.current = s
   useEffect(() => {
@@ -187,8 +186,8 @@ export default function App() {
 
   if (supa && authed === null)
     return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
-  if (supa && !authed && !localMode)
-    return <AuthGate onLocal={() => { localStorage.setItem('carico-local', '1'); setLocalMode(true) }} />
+  if (supa && !authed) // login obbligatorio: senza accesso non si procede
+    return <AuthGate />
   if (supa && authed === true && wasFresh && !synced) // device nuovo: aspetto il caricamento dal cloud
     return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
 
@@ -2194,15 +2193,14 @@ function AuthForm() {
   )
 }
 
-// Schermata di benvenuto a tutto schermo quando non sei loggato (offline-first: si può saltare).
-function AuthGate({ onLocal }: { onLocal: () => void }) {
+// Schermata di login a tutto schermo: prima cosa all'avvio, senza accesso non si procede.
+function AuthGate() {
   return (
     <div className="authgate">
       <div className="authbox">
         <div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div>
-        <p className="authtag">Il tuo coach di allenamento. Accedi per salvare i progressi nel cloud e sbloccare il coach IA.</p>
+        <p className="authtag">Accedi o crea un account per iniziare.</p>
         <AuthForm />
-        <button className="linklike skip" onClick={onLocal}>Usa senza account →</button>
       </div>
     </div>
   )
@@ -2230,7 +2228,7 @@ function Cloud() {
       <button className="ghost" style={{ marginTop: 10 }} onClick={() => { void sb.auth.signOut(); toast('Disconnesso') }}>Esci</button>
     </div>
   )
-  return <div className="card"><AuthForm /></div>
+  return <div className="card"><p className="sm mut" style={{ margin: 0 }}>Non connesso.</p></div>
 }
 
 function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
@@ -2262,13 +2260,13 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
       try {
         const p = JSON.parse(t)
         if (!p.schede) throw new Error('non valido')
-        setS({ ...seed(), ...p }); toast('Backup ripristinato ✓')
+        setS({ ...emptyState(), ...p }); toast('Backup ripristinato ✓')
       } catch { toast('File non valido: serve un backup di CARICO') }
     })
     e.target.value = ''
   }
   const reset = async () => {
-    if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(seed())
+    if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(emptyState())
   }
   const restoreCloud = async () => {
     if (!supa) return toast('Cloud non configurato')
