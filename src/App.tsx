@@ -120,6 +120,7 @@ const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0)
 export default function App() {
   const [s, setS] = useState<State>(load)
   const [tab, setTab] = useState<Tab>('oggi')
+  const [kbOpen, setKbOpen] = useState(false) // tastiera mobile aperta: nascondo la navbar fixed
   // Login obbligatorio: authed dalla sessione Supabase (nessuna modalità locale).
   const [authed, setAuthed] = useState<boolean | null>(supa ? null : false)
   const [synced, setSynced] = useState(false) // decisione pull/push al login completata
@@ -161,6 +162,15 @@ export default function App() {
     try { localStorage.setItem(LS, JSON.stringify(s)) } catch { /* ignora */ }
   }, [s])
   useTop(tab)
+  // La navbar fixed "salta" quando si apre la tastiera: la nascondo finché la tastiera è su.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    let full = vv.height
+    const onResize = () => { if (vv.height > full) full = vv.height; setKbOpen(vv.height < full - 150) }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
 
   // Timer globali: vivono qui, così sopravvivono al cambio di tab
   const [timer, setTimer] = useState<number | null>(null)
@@ -216,7 +226,7 @@ export default function App() {
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
       <TimerBar timer={timer} total={total} onTimer={setTimer} onTotal={setTotal} />
-      <nav>
+      <nav className={kbOpen ? 'kb' : ''}>
         {TABS.map((t) => (
           <a key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
             <span className="ico"><Icon t={t} /></span>{t}
@@ -655,7 +665,7 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
         )
       })}
       <button className="ghost" onClick={addDay}>+ Nuovo giorno</button>
-      {s.schede.length > 1 && (
+      {sc && (
         <button className="ghost" style={{ marginTop: 20, color: 'var(--coral)' }}
           onClick={async () => { if (await confirmDlg('Eliminare questa scheda?', sc?.name)) { mutate((d) => { d.schede.splice(s.activeScheda, 1); d.activeScheda = 0; d.activeDay = 0 }); setView('list') } }}>
           Elimina scheda</button>

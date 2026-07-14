@@ -483,3 +483,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .linklike:active { color:var(--chalk); }
 .linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }
 .authmsg { margin-top:16px; text-align:center; font-size:13.5px; line-height:1.45; color:var(--amber); }
+
+/* navbar: si ritira giù quando la tastiera è aperta, così non "salta" */
+nav { transition:transform .18s ease; }
+nav.kb { transform:translateY(120%); }
