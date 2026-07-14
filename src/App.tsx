@@ -219,7 +219,7 @@ export default function App() {
 
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} />}
-      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest}
+      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setTimer(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
@@ -896,8 +896,8 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
 
 type Draft = { kg: string; reps: string; rpe: string }
 
-function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
-  s: State; setS: (u: State) => void; startRest: (sec: number) => void
+function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }: {
+  s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
   workoutStart: number | null; setWorkoutStart: (v: number | null) => void
 }) {
   const plan = curItems(s)
@@ -1060,8 +1060,11 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
   const finish = () => {
     if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
     setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()) })
+    setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
+    stopRest()            // e il timer di recupero
+    sessioneChiusa()      // chiudo la sessione nel cloud
   }
-  const chiudiSummary = () => { setSummary(null); setWorkoutStart(null); sessioneChiusa() }
+  const chiudiSummary = () => setSummary(null)
 
   if (!items.length) return (
     <>
