@@ -71,16 +71,30 @@ let sess: Sess | null = JSON.parse(localStorage.getItem(SK) ?? 'null')
 const saveSess = () => localStorage.setItem(SK, JSON.stringify(sess))
 const GAP_MS = 3 * 3600_000
 
+// uuid() esiste SOLO in contesti sicuri (HTTPS o localhost). Sul telefono via
+// http://192.168... è indefinito e farebbe fallire il salvataggio: qui un fallback che gira ovunque.
+function uuid(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  const b = new Uint8Array(16)
+  if (c?.getRandomValues) c.getRandomValues(b)
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256)
+  b[6] = (b[6] & 0x0f) | 0x40 // versione 4
+  b[8] = (b[8] & 0x3f) | 0x80 // variante
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
 // Registra una serie: apre la sessione se serve, misura il recupero REALE
 // (tempo dall'ultima serie segnata, qualunque esercizio). Ritorna l'id della riga cloud.
 export function serieLoggata(esercizio: string, peso: number, reps: number, rpe: number | null): string {
   const now = Date.now()
   if (!sess || now - sess.lastSetAt > GAP_MS) {
-    sess = { id: crypto.randomUUID(), lastSetAt: now, n: 0 }
+    sess = { id: uuid(), lastSetAt: now, n: 0 }
     enq({ op: 'ins', t: 'sessione', row: { id: sess.id, inizio: new Date(now).toISOString() } })
   }
   const recupero_sec = sess.n === 0 ? null : Math.round((now - sess.lastSetAt) / 1000)
-  const id = crypto.randomUUID()
+  const id = uuid()
   sess.n += 1; sess.lastSetAt = now; saveSess()
   enq({ op: 'ins', t: 'serie', row: {
     id, sessione_id: sess.id, esercizio, ordine: sess.n,

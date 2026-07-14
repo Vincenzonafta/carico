@@ -1036,7 +1036,9 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
     if (!kg || !+d.reps) return toast('Servono peso e ripetizioni')
     if (workoutStart == null) setWorkoutStart(Date.now()) // il cronometro parte dalla prima serie segnata
     const rpe = d.rpe ? +d.rpe : null
-    const id = serieLoggata(it.ex, kg, +d.reps, rpe) // specchio cloud: sessione + recupero reale
+    let id: string | undefined
+    try { id = serieLoggata(it.ex, kg, +d.reps, rpe) } // specchio cloud: sessione + recupero reale
+    catch (e) { console.warn('[serie cloud]', e) } // un errore di sync NON deve bloccare il salvataggio locale
     setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg, reps: +d.reps, rpe }] })
     startRest(it.rest)
     if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
