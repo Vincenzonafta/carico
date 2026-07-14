@@ -25,6 +25,7 @@ export type State = {
   mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
   settings: { sound: boolean; vibrate: boolean }
+  finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)

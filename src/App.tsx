@@ -1063,6 +1063,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, o
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
+    setS({ ...s, finishedDate: today() }) // marca la giornata come conclusa -> schermata bloccata al rientro
   }
   const chiudiSummary = () => { setSummary(null); onDone() } // finito: esco dall'allenamento
 
@@ -1072,6 +1073,31 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, o
       <p className="sm mut" style={{ lineHeight: 1.6 }}>Nessun giorno attivo. Vai in <b>Schede</b>, scegli un giorno e premi ▶ Inizia.</p>
     </>
   )
+
+  // Allenamento di oggi concluso con "Finito": schermata bloccata di sola lettura (niente lista modificabile).
+  if (s.finishedDate === today() && anyToday && !summary) {
+    const sum = sessionSummary(s.log, today())
+    const prs = prsForSession(s.log, today())
+    return (
+      <>
+        <div className="card done" style={{ marginTop: 8 }}>
+          <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
+          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>Allenamento di oggi completato</div>
+          <div className="tiles" style={{ marginTop: 12 }}>
+            <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(sum.tonnage / 1000)} <span className="sm mut">t</span></div></div>
+            <div className="tile"><div className="l">Serie</div><div className="v num">{sum.sets}</div></div>
+            <div className="tile"><div className="l">RPE medio</div><div className="v num">{sum.avgRpe ? fmt(sum.avgRpe) : '—'}</div></div>
+            <div className="tile"><div className="l">Record</div><div className="v num" style={{ color: prs.length ? 'var(--amber)' : undefined }}>{prs.length}</div></div>
+          </div>
+          {prs.map((ex) => (
+            <div className="prband" key={ex}><span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div></div>
+          ))}
+        </div>
+        <p className="sm mut" style={{ textAlign: 'center', margin: '14px 0 0' }}>Torna domani, oppure scegli un altro giorno in <b>Schede</b>.</p>
+        <button className="ghost" style={{ marginTop: 14 }} onClick={() => setS({ ...s, finishedDate: undefined })}>Riapri e modifica l'allenamento</button>
+      </>
+    )
+  }
 
   const dur = workoutStart ? Math.floor((Date.now() - workoutStart) / 1000) : 0
   const todayVol = todayLog.reduce((a, x) => a + x.kg * x.reps, 0)
