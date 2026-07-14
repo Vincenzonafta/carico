@@ -482,3 +482,4 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .linklike { background:transparent; color:var(--mut); font-weight:600; box-shadow:none; margin-top:10px; }
 .linklike:active { color:var(--chalk); }
 .linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }
+.authmsg { margin-top:16px; text-align:center; font-size:13.5px; line-height:1.45; color:var(--amber); }

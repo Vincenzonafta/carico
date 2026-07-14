@@ -136,15 +136,20 @@ export default function App() {
     if (!supa || authed !== true || synced) return
     let cancel = false
     ;(async () => {
-      const uid = (await supa!.auth.getSession()).data.session?.user.id
-      if (!uid || cancel) return
-      await flush()
-      const cloud = await pullAll(uid)
-      if (cancel || !cloud) return
-      const hasCloud = !!cloud.dati || cloud.log.length > 0 || cloud.checkins.length > 0 || cloud.meals.length > 0 || cloud.body.length > 0 || cloud.water.length > 0
-      if (wasFresh && hasCloud) setS(statoDaCloud(cloud))
-      else configSalvata(sRef.current)
-      if (!cancel) setSynced(true)
+      try {
+        const uid = (await supa!.auth.getSession()).data.session?.user.id
+        if (!uid || cancel) return
+        await flush()
+        const cloud = await pullAll(uid)
+        if (cancel || !cloud) return
+        const hasCloud = !!cloud.dati || cloud.log.length > 0 || cloud.checkins.length > 0 || cloud.meals.length > 0 || cloud.body.length > 0 || cloud.water.length > 0
+        if (wasFresh && hasCloud) setS(statoDaCloud(cloud))
+        else configSalvata(sRef.current)
+      } catch (e) {
+        console.warn('[hydrate]', e) // qualunque errore: NON lasciare l'app bloccata sullo splash
+      } finally {
+        if (!cancel) setSynced(true)
+      }
     })()
     return () => { cancel = true }
   }, [authed, synced])
@@ -2156,25 +2161,54 @@ const Tog = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => (
   <button className={'tog' + (on ? ' on' : '')} onClick={() => set(!on)} aria-label={on ? 'Attivo' : 'Spento'}><i /></button>
 )
 
+// Traduce i messaggi d'errore di Supabase (inglesi) in italiano leggibile.
+function traduciAuth(m: string): string {
+  const l = m.toLowerCase()
+  if (l.includes('invalid login')) return 'Email o password non corretti.'
+  if (l.includes('already registered') || l.includes('already exists')) return 'Email già registrata: accedi.'
+  if (l.includes('password should be') || l.includes('at least 6')) return 'La password deve avere almeno 6 caratteri.'
+  if (l.includes('unable to validate email') || l.includes('invalid email')) return 'Email non valida.'
+  if (l.includes('rate limit') || l.includes('too many')) return 'Troppi tentativi: riprova tra poco.'
+  if (l.includes('email not confirmed')) return 'Devi prima confermare l\'email (controlla la posta).'
+  return m
+}
+
 // Form di autenticazione riusabile: gate a schermo intero e card in Profilo.
-// Toggle accedi/registrati; il post-login (chiusura gate + flush coda) avviene via onAuthStateChange.
+// Messaggi inline (non toast che spariscono); il post-login (chiusura gate) avviene via onAuthStateChange.
 function AuthForm() {
   const [mode, setMode] = useState<'in' | 'up'>('in')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
   if (!supa) return null
   const sb = supa
   const go = async () => {
-    if (!email.trim() || pw.length < 6) return toast('Servono email e password (min 6 caratteri)')
+    setMsg(null)
+    const em = email.trim()
+    if (!em || pw.length < 6) return setMsg('Inserisci email e password (almeno 6 caratteri).')
     setBusy(true)
-    const r = mode === 'in'
-      ? await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
-      : await sb.auth.signUp({ email: email.trim(), password: pw })
-    setBusy(false)
-    if (r.error) return toast(r.error.message)
-    if (mode === 'up' && !r.data.session) return toast('Ti ho mandato una mail: conferma l\'account e poi accedi')
-    toast(mode === 'up' ? 'Account creato ✓' : 'Bentornato ✓')
+    try {
+      if (mode === 'in') {
+        const r = await sb.auth.signInWithPassword({ email: em, password: pw })
+        if (r.error) setMsg(traduciAuth(r.error.message))
+        // se ok, onAuthStateChange chiude il gate
+      } else {
+        const r = await sb.auth.signUp({ email: em, password: pw })
+        if (r.error) {
+          const t = traduciAuth(r.error.message)
+          if (/già registrata/.test(t)) setMode('in') // email esistente: porta al login
+          return setMsg(t)
+        }
+        // Su alcune config Supabase l'email esistente non dà errore ma user con identities vuote
+        if (r.data.user && (r.data.user.identities?.length ?? 0) === 0) {
+          setMode('in'); setMsg('Questa email è già registrata: accedi con la tua password.')
+        } else if (!r.data.session) {
+          setMsg('Ti ho inviato una mail: conferma l\'account, poi accedi.')
+        }
+        // se c'è la sessione, onAuthStateChange chiude il gate
+      }
+    } finally { setBusy(false) }
   }
   return (
     <>
@@ -2186,9 +2220,10 @@ function AuthForm() {
       <button disabled={busy} style={{ marginTop: 12 }} onClick={go}>
         {busy ? '…' : mode === 'in' ? 'Entra' : 'Crea account'}
       </button>
-      <button className="linklike" disabled={busy} onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
+      <button className="linklike" disabled={busy} onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setMsg(null) }}>
         {mode === 'in' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
       </button>
+      {msg && <p className="authmsg">{msg}</p>}
     </>
   )
 }
