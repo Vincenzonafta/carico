@@ -1,6 +1,7 @@
 // Motore del coach: logica pura, zero UI. Tutto deterministico.
 
-export type SetLog = { date: string; ex: string; kg: number; reps: number; rpe: number | null }
+// id: riga specchiata nel cloud (i salvataggi vecchi non ce l'hanno)
+export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null }
 export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap' | 'failure'
 export type SetSpec = { type: SetType; reps: string; load?: string }
 // ss = superset con l'esercizio immediatamente successivo del giorno

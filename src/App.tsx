@@ -11,6 +11,8 @@ import {
   foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
+import { supa } from './data/client'
+import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState } from './data/sync'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -71,6 +73,7 @@ const Clock = () => (
 )
 
 const LS = 'carico-v1'
+let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
 function load(): State {
   try {
     const raw = localStorage.getItem(LS)
@@ -966,13 +969,25 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
     const kg = parseFloat(d.kg.replace(',', '.'))
     if (!kg || !+d.reps) return toast('Servono peso e ripetizioni')
     if (workoutStart == null) setWorkoutStart(Date.now()) // il cronometro parte dalla prima serie segnata
-    setS({ ...s, log: [...s.log, { date: today(), ex: it.ex, kg, reps: +d.reps, rpe: d.rpe ? +d.rpe : null }] })
+    const rpe = d.rpe ? +d.rpe : null
+    const id = serieLoggata(it.ex, kg, +d.reps, rpe) // specchio cloud: sessione + recupero reale
+    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg, reps: +d.reps, rpe }] })
     startRest(it.rest)
+    if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
+      cloudNudged = true
+      const st = cloudState()
+      toast(st === 'on' ? '☁ Serie sincronizzate nel cloud'
+        : st === 'anon' ? 'Salvata in locale · accedi in Profilo → Cloud per sincronizzare'
+        : 'Solo locale · riavvia il server dopo aver messo .env.local')
+    }
   }
   const uncheck = (ex: string, nth: number) => {
     let seen = 0
     const idx = s.log.findIndex((x) => x.date === today() && x.ex === ex && seen++ === nth)
-    if (idx >= 0) setS({ ...s, log: s.log.filter((_, j) => j !== idx) })
+    if (idx < 0) return
+    const rm = s.log[idx]
+    if (rm.id) serieRimossa(rm.id) // il DB deve restare la verità: via anche dal cloud
+    setS({ ...s, log: s.log.filter((_, j) => j !== idx) })
   }
   const finish = () => {
     if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
@@ -1134,7 +1149,7 @@ function Allena({ s, setS, startRest, workoutStart, setWorkoutStart }: {
               <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
             </div>
           ))}
-          <button style={{ marginTop: 12 }} onClick={() => { setSummary(null); setWorkoutStart(null) }}>Chiudi</button>
+          <button style={{ marginTop: 12 }} onClick={() => { setSummary(null); setWorkoutStart(null); sessioneChiusa() }}>Chiudi</button>
         </div>
       )}
     </>
@@ -2073,6 +2088,55 @@ const Tog = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => (
   <button className={'tog' + (on ? ' on' : '')} onClick={() => set(!on)} aria-label={on ? 'Attivo' : 'Spento'}><i /></button>
 )
 
+// Account cloud: login/registrazione Supabase. Le serie si specchiano nel DB
+// (src/data/sync.ts): è la memoria da cui il coach IA leggerà.
+function Cloud() {
+  const [user, setUser] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!supa) return
+    supa.auth.getSession().then(({ data }) => setUser(data.session?.user.email ?? null))
+    const { data: sub } = supa.auth.onAuthStateChange((_e, s2) => setUser(s2?.user.email ?? null))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+  if (!supa) return (
+    <div className="card"><p className="sm mut" style={{ margin: 0 }}>
+      Non configurato: copia <b>.env.example</b> in <b>.env.local</b>, incolla le chiavi del progetto Supabase e riavvia.
+    </p></div>
+  )
+  const sb = supa
+  if (user) return (
+    <div className="card">
+      <div className="mrow"><span>Connesso</span><b style={{ fontSize: 13 }}>{user}</b></div>
+      {pending() > 0 && <div className="mrow"><span>Serie in coda di invio</span><b className="num">{pending()}</b></div>}
+      <button className="ghost" style={{ marginTop: 10 }} onClick={() => { void sb.auth.signOut(); toast('Disconnesso') }}>Esci</button>
+    </div>
+  )
+  const go = async (mode: 'in' | 'up') => {
+    if (!email.trim() || pw.length < 6) return toast('Servono email e password (min 6 caratteri)')
+    setBusy(true)
+    const r = mode === 'in'
+      ? await sb.auth.signInWithPassword({ email: email.trim(), password: pw })
+      : await sb.auth.signUp({ email: email.trim(), password: pw })
+    setBusy(false)
+    if (r.error) return toast(r.error.message)
+    toast(mode === 'up' ? 'Account creato ✓' : 'Connesso ✓')
+  }
+  return (
+    <div className="card">
+      <p className="sm mut" style={{ marginTop: 0 }}>Con l'account le serie si salvano anche nel cloud: è la memoria che il coach IA leggerà.</p>
+      <input type="email" placeholder="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input type="password" placeholder="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} style={{ marginTop: 8 }} />
+      <div className="row" style={{ marginTop: 10 }}>
+        <button disabled={busy} onClick={() => go('in')}>Entra</button>
+        <button className="ghost" disabled={busy} onClick={() => go('up')}>Crea account</button>
+      </div>
+    </div>
+  )
+}
+
 function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
   const lib = [...EXERCISES, ...s.customExercises]
   const setOpt = (k: 'sound' | 'vibrate', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
@@ -2138,7 +2202,9 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
         </label>
         <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
       </div>
-      <p className="hint">I dati vivono solo su questo dispositivo: esporta un backup ogni tanto.</p>
+      <h2>Cloud</h2>
+      <Cloud />
+      <p className="hint">Schede e pasti vivono su questo dispositivo (esporta un backup ogni tanto); le serie vanno anche nel cloud quando sei connesso.</p>
     </>
   )
 }
