@@ -116,3 +116,38 @@ export function pastiOggiAggiornati(
       data: m.date, tipo: m.type, nome: m.name,
       kcal: m.kcal, prot: m.protein, carbo: m.carbs, grassi: m.fat, grammi: m.grams ?? null } })
 }
+
+// --- Definizioni (schede, obiettivi, impostazioni, custom, piano): un blob per utente ---
+// Le tengo come snapshot unico in config.dati; l'IA le legge intere. Coalescio gli upsert
+// consecutivi così una raffica di modifiche non gonfia la coda.
+export function configSalvata(st: Record<string, unknown>) {
+  const dati = {
+    schede: st.schede, activeScheda: st.activeScheda, activeDay: st.activeDay,
+    customExercises: st.customExercises, extras: st.extras, target: st.target,
+    mealPlan: st.mealPlan, goal: st.goal, settings: st.settings, customFoods: st.customFoods,
+  }
+  const last = q[q.length - 1]
+  if (last && last.op === 'ups' && last.t === 'config') { last.row = { dati }; save(); void flush() }
+  else enq({ op: 'ups', t: 'config', onConflict: 'utente_id', row: { dati } })
+}
+
+// Scarica TUTTO dal cloud e lo rimappa nella forma dello State locale (per il ripristino al login).
+export async function pullAll(uid: string) {
+  if (!supa) return null
+  const [cfg, se, ci, pa, pe, ac] = await Promise.all([
+    supa.from('config').select('dati').eq('utente_id', uid).maybeSingle(),
+    supa.from('serie').select('*').eq('utente_id', uid),
+    supa.from('checkin').select('*').eq('utente_id', uid),
+    supa.from('pasto').select('*').eq('utente_id', uid),
+    supa.from('peso_corporeo').select('*').eq('utente_id', uid),
+    supa.from('acqua').select('*').eq('utente_id', uid),
+  ])
+  return {
+    dati: (cfg.data?.dati ?? null) as Record<string, unknown> | null,
+    log: (se.data ?? []).map((r) => ({ id: r.id, date: String(r.ts).slice(0, 10), ex: r.esercizio, kg: Number(r.peso), reps: r.reps, rpe: r.rpe })),
+    checkins: (ci.data ?? []).map((c) => ({ date: c.data, sonno: c.sonno, energia: c.energia, doms: c.doms, stress: c.stress, ore: c.ore ?? undefined })),
+    meals: (pa.data ?? []).map((p) => ({ date: p.data, type: p.tipo, name: p.nome, kcal: p.kcal, protein: Number(p.prot), carbs: Number(p.carbo), fat: Number(p.grassi), grams: p.grammi ?? undefined })),
+    body: (pe.data ?? []).map((b) => ({ date: b.data, kg: Number(b.kg) })),
+    water: (ac.data ?? []).map((w) => ({ date: w.data, ml: w.ml })),
+  }
+}

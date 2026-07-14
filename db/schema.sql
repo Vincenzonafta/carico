@@ -94,13 +94,12 @@ create table nota_coach (
 );
 
 -- ═══ STATO CORRENTE: definizioni, l'IA le legge intere ═══
+-- Un blob unico per utente (schede, obiettivi, impostazioni, custom, piano): niente
+-- normalizzazione, l'app lo scrive/legge intero.
 create table config (
-  utente_id    uuid primary key references utente (id) on delete cascade,
-  scheda       jsonb,
-  obiettivi    jsonb,
-  impostazioni jsonb,
-  custom_ex    jsonb,
-  custom_food  jsonb
+  utente_id  uuid primary key references utente (id) on delete cascade,
+  dati       jsonb,
+  updated_at timestamptz not null default now()
 );
 
 -- ═══ INDICI: le rotte calde delle query dell'IA ═══

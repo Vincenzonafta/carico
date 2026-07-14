@@ -12,7 +12,7 @@ import {
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
-import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati } from './data/sync'
+import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -74,6 +74,18 @@ const Clock = () => (
 
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
+const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: device nuovo, si può ripristinare dal cloud
+
+// Ricostruisce lo State locale dai dati scaricati dal cloud (gli eventi vincono sul seed).
+function statoDaCloud(cloud: NonNullable<Awaited<ReturnType<typeof pullAll>>>): State {
+  const base = seed()
+  return {
+    ...base, ...(cloud.dati ?? {}),
+    log: cloud.log, checkins: cloud.checkins,
+    checkin: cloud.checkins.find((c) => c.date === today()) ?? base.checkin,
+    meals: cloud.meals, body: cloud.body, water: cloud.water,
+  } as State
+}
 function load(): State {
   try {
     const raw = localStorage.getItem(LS)
@@ -111,12 +123,36 @@ export default function App() {
   // Gate login (offline-first): authed dal login Supabase, localMode = "usa senza account"
   const [authed, setAuthed] = useState<boolean | null>(supa ? null : false)
   const [localMode, setLocalMode] = useState(() => !!localStorage.getItem('carico-local'))
+  const [synced, setSynced] = useState(false) // decisione pull/push al login completata
+  const sRef = useRef(s); sRef.current = s
   useEffect(() => {
     if (!supa) return
     supa.auth.getSession().then(({ data }) => setAuthed(!!data.session))
-    const { data: sub } = supa.auth.onAuthStateChange((_e, s2) => setAuthed(!!s2))
+    const { data: sub } = supa.auth.onAuthStateChange((_e, s2) => { setAuthed(!!s2); if (!s2) setSynced(false) })
     return () => sub.subscription.unsubscribe()
   }, [])
+  // Al login, una volta sola: device nuovo con dati nel cloud -> ripristino; altrimenti il locale è la
+  // verità e lo carico nel cloud. Prima svuoto la coda così non perdo eventuali modifiche locali in sospeso.
+  useEffect(() => {
+    if (!supa || authed !== true || synced) return
+    let cancel = false
+    ;(async () => {
+      const uid = (await supa!.auth.getSession()).data.session?.user.id
+      if (!uid || cancel) return
+      await flush()
+      const cloud = await pullAll(uid)
+      if (cancel || !cloud) return
+      const hasCloud = !!cloud.dati || cloud.log.length > 0 || cloud.checkins.length > 0 || cloud.meals.length > 0 || cloud.body.length > 0 || cloud.water.length > 0
+      if (wasFresh && hasCloud) setS(statoDaCloud(cloud))
+      else configSalvata(sRef.current)
+      if (!cancel) setSynced(true)
+    })()
+    return () => { cancel = true }
+  }, [authed, synced])
+  // Definizioni (schede, obiettivi...) nel cloud a ogni modifica, ma solo dopo la sincro iniziale.
+  useEffect(() => {
+    if (supa && authed === true && synced) configSalvata(s)
+  }, [s.schede, s.activeScheda, s.activeDay, s.customExercises, s.extras, s.target, s.mealPlan, s.goal, s.settings, s.customFoods]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     try { localStorage.setItem(LS, JSON.stringify(s)) } catch { /* ignora */ }
   }, [s])
@@ -153,6 +189,8 @@ export default function App() {
     return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
   if (supa && !authed && !localMode)
     return <AuthGate onLocal={() => { localStorage.setItem('carico-local', '1'); setLocalMode(true) }} />
+  if (supa && authed === true && wasFresh && !synced) // device nuovo: aspetto il caricamento dal cloud
+    return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
 
   return (
     <div id="app" className={timer != null ? 'pad-timer' : ''}>
@@ -2232,6 +2270,15 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
   const reset = async () => {
     if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(seed())
   }
+  const restoreCloud = async () => {
+    if (!supa) return toast('Cloud non configurato')
+    const uid = (await supa.auth.getSession()).data.session?.user.id
+    if (!uid) return toast('Accedi prima nel Cloud')
+    if (!(await confirmDlg('Caricare i dati dal cloud?', 'Sostituisce i dati di questo dispositivo con quelli salvati nel cloud.'))) return
+    const cloud = await pullAll(uid)
+    if (!cloud) return toast('Niente da caricare')
+    setS(statoDaCloud(cloud)); toast('Dati caricati dal cloud ✓')
+  }
   return (
     <>
       <h2>Allenamento</h2>
@@ -2258,6 +2305,7 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
         <label className="ghost filebtn">Importa backup
           <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
         </label>
+        <button className="ghost" style={{ marginTop: 8 }} onClick={restoreCloud}>Carica dati dal cloud</button>
         <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
       </div>
       <h2>Cloud</h2>
