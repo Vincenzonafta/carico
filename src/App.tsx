@@ -220,7 +220,7 @@ export default function App() {
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} />}
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setTimer(null)}
-        workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} onDone={() => setTab('oggi')} />}
+        workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
@@ -896,9 +896,9 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
 
 type Draft = { kg: string; reps: string; rpe: string }
 
-function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, onDone }: {
+function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }: {
   s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
-  workoutStart: number | null; setWorkoutStart: (v: number | null) => void; onDone: () => void
+  workoutStart: number | null; setWorkoutStart: (v: number | null) => void
 }) {
   const plan = curItems(s)
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
@@ -1065,7 +1065,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, o
     sessioneChiusa()      // chiudo la sessione nel cloud
     setS({ ...s, finishedDate: today() }) // marca la giornata come conclusa -> schermata bloccata al rientro
   }
-  const chiudiSummary = () => { setSummary(null); onDone() } // finito: esco dall'allenamento
+  const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
 
   if (!items.length) return (
     <>
