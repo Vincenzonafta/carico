@@ -26,6 +26,7 @@ export type State = {
   body: BodyLog[]; goal: Goal; water: Water[]
   settings: { sound: boolean; vibrate: boolean }
   finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
+  finishedKcal?: number // calorie stimate dell'allenamento concluso (mostrate + pronte per Apple Health)
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)
@@ -103,6 +104,14 @@ export function prsForSession(log: SetLog[], date: string) {
     const prevBest = prev.length ? Math.max(...prev.map((d) => sessE1(log, ex, d))) : 0
     return prevBest > 0 && sessE1(log, ex, date) > prevBest + 0.01
   })
+}
+
+// Stima grezza delle calorie di una seduta di pesi: MET ~4.5 (sforzo intermittente, molto recupero)
+// per il peso corporeo e la durata. È una prima approssimazione onesta; l'IA (#14) la raffinerà con più dati.
+// ponytail: solo durata × peso; se serve, poi si pesa anche l'intensità (RPE, densità del tonnellaggio).
+export function stimaCalorie(durataSec: number, pesoCorporeoKg: number): number {
+  const ore = Math.max(0, durataSec) / 3600
+  return Math.round(4.5 * (pesoCorporeoKg || 75) * ore)
 }
 
 // Riepilogo di una sessione: tonnellaggio, RPE medio, serie

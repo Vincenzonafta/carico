@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
-  prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState,
+  prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
@@ -914,7 +914,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   const items = [...plan, ...extras]
   const day = curDay(s)
   const lib = [...EXERCISES, ...s.customExercises]
-  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[] } | null>(null)
+  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number } | null>(null)
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1068,11 +1068,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   }
   const finish = () => {
     if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
-    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()) })
+    const durata = workoutStart ? Math.round((Date.now() - workoutStart) / 1000) : 0
+    const pesoCorporeo = s.body.length ? s.body[s.body.length - 1].kg : 75
+    const kcal = stimaCalorie(durata, pesoCorporeo) // stima da mandare ad Apple Health
+    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal })
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
-    setS({ ...s, finishedDate: today() }) // marca la giornata come conclusa -> schermata bloccata al rientro
+    setS({ ...s, finishedDate: today(), finishedKcal: kcal }) // giornata conclusa + calorie stimate
   }
   const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
 
@@ -1092,6 +1095,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         <div className="card done" style={{ marginTop: 8 }}>
           <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
           <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>Allenamento di oggi completato</div>
+          {s.finishedKcal != null && <div style={{ textAlign: 'center', marginTop: 6 }}><b className="num" style={{ color: 'var(--coral)', fontSize: 15 }}>🔥 {s.finishedKcal} kcal</b> <span className="sm mut">stimate</span></div>}
           <div className="tiles" style={{ marginTop: 12 }}>
             <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(sum.tonnage / 1000)} <span className="sm mut">t</span></div></div>
             <div className="tile"><div className="l">Serie</div><div className="v num">{sum.sets}</div></div>
@@ -1246,6 +1250,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
           <div className="card done" style={{ maxWidth: 394, width: '100%', margin: 0 }} onClick={(e) => e.stopPropagation()}>
             <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
             <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>Sessione completata</div>
+            <div style={{ textAlign: 'center', marginTop: 6 }}><b className="num" style={{ color: 'var(--coral)', fontSize: 15 }}>🔥 {summary.kcal} kcal</b> <span className="sm mut">stimate</span></div>
             <div className="tiles" style={{ marginTop: 12 }}>
               <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(summary.tonnage / 1000)} <span className="sm mut">t</span></div></div>
               <div className="tile"><div className="l">Serie</div><div className="v num">{summary.sets}</div></div>
