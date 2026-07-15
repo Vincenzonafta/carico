@@ -1336,20 +1336,36 @@ const Barcode = () => (
 // (iPhone Safari non ha l'API nativa). Inserimento manuale come fallback finale.
 function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const trackRef = useRef<MediaStreamTrack | null>(null)
   const [live, setLive] = useState(false)
   const [manual, setManual] = useState('')
+  const [zoom, setZoom] = useState<{ min: number; max: number; step: number; val: number } | null>(null)
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) return
     let stop = false
     let stream: MediaStream | null = null
     let zxing: { stop: () => void } | null = null
+    // Alta risoluzione: il barcode ha più pixel -> leggibile anche da lontano (il fix vero su iPhone).
+    const VID: MediaTrackConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    // Zoom ottico/digitale se la fotocamera lo espone (parte a 2x, poi lo slider lo regola).
+    const setupZoom = (track?: MediaStreamTrack) => {
+      if (!track) return
+      trackRef.current = track
+      const caps = track.getCapabilities?.() as { zoom?: { min: number; max: number; step: number } } | undefined
+      if (caps?.zoom && caps.zoom.max > caps.zoom.min) {
+        const val = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2))
+        setZoom({ min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1, val })
+        void track.applyConstraints({ advanced: [{ zoom: val }] } as unknown as MediaTrackConstraints)
+      }
+    }
     const BD = (window as unknown as { BarcodeDetector?: new (o?: object) => { detect: (v: unknown) => Promise<{ rawValue: string }[]> } }).BarcodeDetector
     ;(async () => {
       try {
         if (BD) { // Android/Chrome: rilevatore nativo, leggero
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+          stream = await navigator.mediaDevices.getUserMedia({ video: VID })
           if (stop || !videoRef.current) return
           videoRef.current.srcObject = stream; await videoRef.current.play(); setLive(true)
+          setupZoom(stream.getVideoTracks()[0])
           const det = new BD({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
           const scan = async () => {
             if (stop || !videoRef.current) return
@@ -1361,10 +1377,11 @@ function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; o
           const { BrowserMultiFormatReader } = await import('@zxing/browser')
           if (stop || !videoRef.current) return
           const reader = new BrowserMultiFormatReader()
-          zxing = await reader.decodeFromConstraints({ video: { facingMode: 'environment' } }, videoRef.current, (res) => {
+          zxing = await reader.decodeFromConstraints({ video: VID }, videoRef.current, (res) => {
             if (res && !stop) { stop = true; onCode(res.getText()) }
           })
           setLive(true)
+          setupZoom((videoRef.current.srcObject as MediaStream | null)?.getVideoTracks()[0])
         }
       } catch { setLive(false) }
     })()
@@ -1379,6 +1396,13 @@ function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; o
           {!live && <div className="scanhint sm mut">Inquadra il codice o inseriscilo a mano ↓</div>}
           {live && <div className="scanframe" />}
         </div>
+        {zoom && (
+          <div className="row" style={{ marginTop: 10, alignItems: 'center', gap: 10 }}>
+            <span className="sm mut">Zoom</span>
+            <input type="range" min={zoom.min} max={zoom.max} step={zoom.step} value={zoom.val} style={{ flex: 1 }}
+              onChange={(e) => { const v = +e.target.value; setZoom({ ...zoom, val: v }); void trackRef.current?.applyConstraints({ advanced: [{ zoom: v }] } as unknown as MediaTrackConstraints) }} />
+          </div>
+        )}
         <div className="row" style={{ marginTop: 12 }}>
           <input value={manual} onChange={(e) => setManual(e.target.value)} inputMode="numeric" placeholder="Codice (es. 8001505005707)" />
           <button style={{ width: 'auto', padding: '12px 16px' }} onClick={() => manual.trim() && onCode(manual.trim())}>Cerca</button>
