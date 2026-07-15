@@ -74,6 +74,11 @@ const Clock = () => (
 
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
+const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che scrive le calorie in Salute
+// Apre la Shortcut passandole le kcal come input (solo iOS via schema shortcuts://).
+const inviaSalute = (kcal: number) => {
+  window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${Math.round(kcal)}`
+}
 const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: device nuovo, si può ripristinare dal cloud
 
 // Ricostruisce lo State locale dai dati scaricati dal cloud (gli eventi vincono sul seed).
@@ -1118,6 +1123,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
             <div className="prband" key={ex}><span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div></div>
           ))}
         </div>
+        {isIOS() && s.finishedKcal != null && <button style={{ marginTop: 14 }} onClick={() => inviaSalute(s.finishedKcal!)}>🍎 Invia le calorie a Salute</button>}
         <p className="sm mut" style={{ textAlign: 'center', margin: '14px 0 0' }}>Torna domani, oppure scegli un altro giorno in <b>Schede</b>.</p>
         <button className="ghost" style={{ marginTop: 14 }} onClick={() => setS({ ...s, finishedDate: undefined })}>Riapri e modifica l'allenamento</button>
       </>
@@ -1274,7 +1280,8 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                 <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
               </div>
             ))}
-            <button style={{ marginTop: 12 }} onClick={chiudiSummary}>Chiudi</button>
+            {isIOS() && <button className="ghost" style={{ marginTop: 12 }} onClick={() => inviaSalute(summary.kcal)}>🍎 Invia le calorie a Salute</button>}
+            <button style={{ marginTop: 8 }} onClick={chiudiSummary}>Chiudi</button>
           </div>
         </div>
       )}
