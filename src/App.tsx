@@ -75,13 +75,8 @@ const Clock = () => (
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
 const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che registra l'allenamento in Salute
-type HealthPayload = { data: string; durata: number; calorie: number; distanza: number }
-// Data locale come nell'esempio della Shortcut: 2026-07-15T09:30:00 (senza fuso, senza ms).
-const isoLocale = (d: Date) => {
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
-// Apre la Shortcut passando il JSON {data, durata(min), calorie, distanza} come input (solo iOS via shortcuts://).
+type HealthPayload = { durata: number; calorie: number; distanza: number }
+// Apre la Shortcut passando il JSON {durata(min), calorie, distanza} come input (solo iOS via shortcuts://).
 const inviaSalute = (p: HealthPayload) => {
   window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(JSON.stringify(p))}`
 }
@@ -1094,7 +1089,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
     const durataSec = workoutStart ? Math.round((Date.now() - workoutStart) / 1000) : 0
     const pesoCorporeo = s.body.length ? s.body[s.body.length - 1].kg : 75
     const kcal = stimaCalorie(durataSec, pesoCorporeo) // stima da mandare ad Apple Health
-    const health: HealthPayload = { data: isoLocale(new Date(workoutStart ?? Date.now())), durata: Math.round(durataSec / 60), calorie: kcal, distanza: 0 }
+    const health: HealthPayload = { durata: Math.round(durataSec / 60), calorie: kcal, distanza: 0 }
     setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal, health })
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
