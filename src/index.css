@@ -486,4 +486,4 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* navbar: si ritira giù quando la tastiera è aperta, così non "salta" */
 nav { transition:transform .18s ease; }
-nav.kb { transform:translateY(120%); }
+nav.kb { transform:translateY(160%); pointer-events:none; }

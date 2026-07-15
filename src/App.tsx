@@ -162,14 +162,23 @@ export default function App() {
     try { localStorage.setItem(LS, JSON.stringify(s)) } catch { /* ignora */ }
   }, [s])
   useTop(tab)
-  // La navbar fixed "salta" quando si apre la tastiera: la nascondo finché la tastiera è su.
+  // La navbar fixed "salta" quando si apre la tastiera: la nascondo mentre un campo di testo è a fuoco.
+  // Solo su touch (focus su input/textarea = tastiera su): più affidabile della matematica sul viewport.
   useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    let full = vv.height
-    const onResize = () => { if (vv.height > full) full = vv.height; setKbOpen(vv.height < full - 150) }
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
+    if (!matchMedia('(pointer: coarse)').matches) return // su desktop non c'è tastiera che copre
+    const isField = (el: EventTarget | null) => {
+      const n = el as HTMLElement | null
+      if (!n) return false
+      if (n.tagName === 'TEXTAREA') return true
+      if (n.tagName !== 'INPUT') return false
+      return !['button', 'submit', 'checkbox', 'radio', 'range', 'color', 'file'].includes((n as HTMLInputElement).type)
+    }
+    let t: ReturnType<typeof setTimeout>
+    const onIn = (e: FocusEvent) => { clearTimeout(t); if (isField(e.target)) setKbOpen(true) }
+    const onOut = () => { t = setTimeout(() => setKbOpen(false), 120) } // ritardo: evita flicker passando tra campi
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+    return () => { clearTimeout(t); document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
   }, [])
 
   // Timer globali: vivono qui, così sopravvivono al cambio di tab
