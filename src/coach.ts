@@ -27,6 +27,7 @@ export type State = {
   settings: { sound: boolean; vibrate: boolean }
   finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
   finishedKcal?: number // calorie stimate dell'allenamento concluso (mostrate + pronte per Apple Health)
+  finishedDurata?: number // durata in secondi dell'allenamento concluso (per Apple Health)
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)

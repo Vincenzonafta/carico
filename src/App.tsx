@@ -74,10 +74,12 @@ const Clock = () => (
 
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
-const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che scrive le calorie in Salute
-// Apre la Shortcut passandole le kcal come input (solo iOS via schema shortcuts://).
-const inviaSalute = (kcal: number) => {
-  window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${Math.round(kcal)}`
+const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che registra l'allenamento in Salute
+// Manda kcal + durata (secondi) come JSON in un unico testo: la Shortcut lo scompone e logga
+// un allenamento completo in Salute/Fitness (solo iOS via schema shortcuts://).
+const inviaSalute = (kcal: number, durataSec: number) => {
+  const payload = JSON.stringify({ kcal: Math.round(kcal), sec: Math.round(durataSec) })
+  window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(payload)}`
 }
 const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: device nuovo, si può ripristinare dal cloud
 
@@ -931,7 +933,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   const items = [...plan, ...extras]
   const day = curDay(s)
   const lib = [...EXERCISES, ...s.customExercises]
-  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number } | null>(null)
+  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; durata: number } | null>(null)
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1088,11 +1090,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
     const durata = workoutStart ? Math.round((Date.now() - workoutStart) / 1000) : 0
     const pesoCorporeo = s.body.length ? s.body[s.body.length - 1].kg : 75
     const kcal = stimaCalorie(durata, pesoCorporeo) // stima da mandare ad Apple Health
-    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal })
+    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal, durata })
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
-    setS({ ...s, finishedDate: today(), finishedKcal: kcal }) // giornata conclusa + calorie stimate
+    setS({ ...s, finishedDate: today(), finishedKcal: kcal, finishedDurata: durata }) // conclusa + kcal + durata
   }
   const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
 
@@ -1123,7 +1125,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
             <div className="prband" key={ex}><span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div></div>
           ))}
         </div>
-        {isIOS() && s.finishedKcal != null && <button style={{ marginTop: 14 }} onClick={() => inviaSalute(s.finishedKcal!)}>🍎 Invia le calorie a Salute</button>}
+        {isIOS() && s.finishedKcal != null && <button style={{ marginTop: 14 }} onClick={() => inviaSalute(s.finishedKcal!, s.finishedDurata ?? 0)}>🍎 Invia a Salute</button>}
         <p className="sm mut" style={{ textAlign: 'center', margin: '14px 0 0' }}>Torna domani, oppure scegli un altro giorno in <b>Schede</b>.</p>
         <button className="ghost" style={{ marginTop: 14 }} onClick={() => setS({ ...s, finishedDate: undefined })}>Riapri e modifica l'allenamento</button>
       </>
@@ -1280,7 +1282,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                 <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
               </div>
             ))}
-            {isIOS() && <button className="ghost" style={{ marginTop: 12 }} onClick={() => inviaSalute(summary.kcal)}>🍎 Invia le calorie a Salute</button>}
+            {isIOS() && <button className="ghost" style={{ marginTop: 12 }} onClick={() => inviaSalute(summary.kcal, summary.durata)}>🍎 Invia a Salute</button>}
             <button style={{ marginTop: 8 }} onClick={chiudiSummary}>Chiudi</button>
           </div>
         </div>
