@@ -186,23 +186,35 @@ export default function App() {
   const [total, setTotal] = useState(120)
   const [workoutStart, setWorkoutStart] = useState<number | null>(null)
   const [, tick] = useState(0) // ridisegna ogni secondo per far scorrere la durata
+  const restEnd = useRef<number | null>(null) // ISTANTE di fine recupero: tiene il timer accurato dopo il blocco schermo
+  // Recupero come istante di fine (non un contatore che decrementa): se iOS sospende il JS a schermo
+  // bloccato, al rientro il tempo rimasto è comunque quello giusto. Ci passano anche le regolazioni manuali.
+  const setRest = (sec: number | null) => {
+    if (sec == null) { restEnd.current = null; setTimer(null); return }
+    restEnd.current = Date.now() + sec * 1000
+    setTimer(sec)
+  }
   useEffect(() => {
     if (timer == null) return
-    if (timer <= 0) {
-      setTimer(null)
-      if (s.settings.vibrate) navigator.vibrate?.(300)
-      if (s.settings.sound) beep()
-      return
+    const step = () => {
+      const rem = restEnd.current ? Math.max(0, Math.round((restEnd.current - Date.now()) / 1000)) : 0
+      if (rem <= 0) {
+        restEnd.current = null; setTimer(null)
+        if (sRef.current.settings.vibrate) navigator.vibrate?.(300)
+        if (sRef.current.settings.sound) beep()
+      } else setTimer(rem)
     }
-    const id = setTimeout(() => setTimer(timer - 1), 1000)
-    return () => clearTimeout(id)
-  }, [timer]) // eslint-disable-line react-hooks/exhaustive-deps
+    const id = setInterval(step, 500) // frequente: si riallinea subito al rientro dallo schermo bloccato
+    const onVis = () => { if (document.visibilityState === 'visible') step() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
+  }, [timer == null]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (workoutStart == null) return
     const id = setInterval(() => tick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [workoutStart])
-  const startRest = (sec: number) => { ensureAudio(); setTimer(sec); setTotal(sec) }
+  const startRest = (sec: number) => { ensureAudio(); setTotal(sec); setRest(sec) }
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
@@ -228,13 +240,13 @@ export default function App() {
 
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} />}
-      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setTimer(null)}
+      {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
-      <TimerBar timer={timer} total={total} onTimer={setTimer} onTotal={setTotal} />
+      <TimerBar timer={timer} total={total} onTimer={setRest} onTotal={setTotal} />
       <nav className={kbOpen ? 'kb' : ''}>
         {TABS.map((t) => (
           <a key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
