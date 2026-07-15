@@ -1332,30 +1332,43 @@ const Barcode = () => (
   </svg>
 )
 
-// Scanner codice a barre: BarcodeDetector nativo se c'è, con inserimento manuale come fallback
+// Scanner codice a barre: BarcodeDetector nativo (Android) se c'è, altrimenti ZXing caricato al volo
+// (iPhone Safari non ha l'API nativa). Inserimento manuale come fallback finale.
 function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [live, setLive] = useState(false)
   const [manual, setManual] = useState('')
   useEffect(() => {
+    if (!navigator.mediaDevices?.getUserMedia) return
+    let stop = false
+    let stream: MediaStream | null = null
+    let zxing: { stop: () => void } | null = null
     const BD = (window as unknown as { BarcodeDetector?: new (o?: object) => { detect: (v: unknown) => Promise<{ rawValue: string }[]> } }).BarcodeDetector
-    if (!BD || !navigator.mediaDevices?.getUserMedia) return
-    let stream: MediaStream | null = null, stop = false
-    const det = new BD({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
     ;(async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        if (!videoRef.current) return
-        videoRef.current.srcObject = stream; await videoRef.current.play(); setLive(true)
-        const scan = async () => {
+        if (BD) { // Android/Chrome: rilevatore nativo, leggero
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
           if (stop || !videoRef.current) return
-          try { const codes = await det.detect(videoRef.current); if (codes.length) { onCode(codes[0].rawValue); return } } catch { /* frame saltato */ }
-          requestAnimationFrame(scan)
+          videoRef.current.srcObject = stream; await videoRef.current.play(); setLive(true)
+          const det = new BD({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
+          const scan = async () => {
+            if (stop || !videoRef.current) return
+            try { const codes = await det.detect(videoRef.current); if (codes.length) { onCode(codes[0].rawValue); return } } catch { /* frame saltato */ }
+            requestAnimationFrame(scan)
+          }
+          scan()
+        } else { // iPhone: niente API nativa -> carico ZXing solo adesso
+          const { BrowserMultiFormatReader } = await import('@zxing/browser')
+          if (stop || !videoRef.current) return
+          const reader = new BrowserMultiFormatReader()
+          zxing = await reader.decodeFromConstraints({ video: { facingMode: 'environment' } }, videoRef.current, (res) => {
+            if (res && !stop) { stop = true; onCode(res.getText()) }
+          })
+          setLive(true)
         }
-        scan()
       } catch { setLive(false) }
     })()
-    return () => { stop = true; stream?.getTracks().forEach((t) => t.stop()) }
+    return () => { stop = true; stream?.getTracks().forEach((t) => t.stop()); zxing?.stop() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="overlay center" onClick={onClose}>
