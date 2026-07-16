@@ -725,10 +725,9 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
               <div className="set" onClick={() => setEdit(edit === i ? null : i)} style={{ cursor: 'pointer' }}>
                 <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <div style={{ minWidth: 0 }}>
-                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}
+                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && items[i + 1] && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Superset con {items[i + 1].ex}</span>}
                   <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
                   {it.note && <div className="note">✎ {it.note}</div>}
-                  {it.ss && items[i + 1] && <div className="note" style={{ color: 'var(--teal)' }}>Superset con {items[i + 1].ex}</div>}
                 </div>
                 <span className="del" style={{ marginLeft: 'auto' }}>{edit === i ? '▾' : '▸'}</span>
               </div>
@@ -1273,7 +1272,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
               )
             })}
             <div className="setbtns" style={{ marginTop: 8 }}>
-              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done })} title="Calcolatore bilanciere">🧮</button>}
+              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
               <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
               <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
             </div>
