@@ -725,7 +725,7 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
               <div className="set" onClick={() => setEdit(edit === i ? null : i)} style={{ cursor: 'pointer' }}>
                 <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <div style={{ minWidth: 0 }}>
-                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}
+                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>⛓ superset</span>}
                   <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
                   {it.note && <div className="note">✎ {it.note}</div>}
                 </div>
@@ -900,6 +900,7 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
           </div>
           <button className="pen" onClick={done}>✕</button>
         </div>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         <div className="reobox" ref={box} style={{ height: order.length * ROW }}
           onPointerMove={move} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
           {order.map((idx, pos) => {
@@ -917,6 +918,7 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
             )
           })}
         </div>
+        </div>
         <button onClick={done}>Fatto</button>
       </div>
     </div>
@@ -924,6 +926,41 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
 }
 
 type Draft = { kg: string; reps: string; rpe: string }
+
+// Calcolatore bilanciere: bilanciere + dischi per lato -> peso totale (2 lati)
+function BarCalc({ onUse, onClose }: { onUse: (kg: number) => void; onClose: () => void }) {
+  const [bar, setBar] = useState(20)
+  const [plates, setPlates] = useState<number[]>([])
+  const PLATES = [1.25, 2.5, 5, 10, 15, 20, 25]
+  const perSide = plates.reduce((a, p) => a + p, 0)
+  const total = bar + perSide * 2
+  return (
+    <div className="overlay center" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <b className="dt">Calcolatore bilanciere</b>
+        <div className="mrow" style={{ marginTop: 12 }}><span>Bilanciere</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[20, 15, 10, 0].map((b) => <button key={b} className={'chip' + (bar === b ? ' on' : '')} onClick={() => setBar(b)}>{b}</button>)}
+          </div>
+        </div>
+        <p className="sm mut" style={{ margin: '14px 0 6px' }}>Dischi per lato — tocca per aggiungere</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {PLATES.map((p) => <button key={p} className="chip" onClick={() => setPlates([...plates, p])}>{fmt(p)}</button>)}
+        </div>
+        {plates.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+            {plates.map((p, i) => <button key={i} className="chip on" onClick={() => setPlates(plates.filter((_, j) => j !== i))}>{fmt(p)} ✕</button>)}
+          </div>
+        )}
+        <div style={{ textAlign: 'center', marginTop: 16 }}>
+          <span className="sm mut">per lato {fmt(perSide)} kg →</span> <b className="num" style={{ fontSize: 24, color: 'var(--lime)' }}>{fmt(total)} kg</b>
+        </div>
+        <button style={{ marginTop: 14 }} onClick={() => onUse(total)}>Usa {fmt(total)} kg</button>
+        <button className="ghost" style={{ marginTop: 8 }} onClick={onClose}>Annulla</button>
+      </div>
+    </div>
+  )
+}
 
 function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }: {
   s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
@@ -935,6 +972,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   const day = curDay(s)
   const lib = [...EXERCISES, ...s.customExercises]
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload } | null>(null)
+  const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1184,6 +1222,8 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
         const ss = inSS(idx)
+        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null // 2° esercizio del superset
+        const ssBlock = !!ssNext && logOf(it.ex).length > logOf(ssNext.ex).length // 1° più avanti del 2°: blocca
         return (
           <div className={'card excard' + (exDone ? ' completed' : '') + (ss ? ' ssgroup' : '')} key={it.ex}>
             <div className="exhead">
@@ -1223,14 +1263,16 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                   <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
                     <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
                   </select>
-                  <button className="chk" disabled={!active} onClick={() => check(it, sp, i)}>✓</button>
+                  <button className="chk" disabled={!active || ssBlock} onClick={() => check(it, sp, i)}>✓</button>
                   {(sp.type !== 'normal' || sp.load) && (
                     <div className="wsub">{setTypeLabel(sp.type)}{sp.load ? ` · ${sp.load}` : ''}</div>
                   )}
+                  {active && ssBlock && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssNext!.ex}</div>}
                 </div>
               )
             })}
             <div className="setbtns" style={{ marginTop: 8 }}>
+              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done })} title="Calcolatore bilanciere">⚖</button>}
               <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
               <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
             </div>
@@ -1238,6 +1280,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         )
       })}
 
+      {barCalc && <BarCalc onUse={(kg) => { setD(barCalc.it, barCalc.sp, barCalc.i, { kg: String(kg) }); setBarCalc(null) }} onClose={() => setBarCalc(null)} />}
       {menu && (
         <div className="overlay" onClick={() => setMenu(null)}>
           <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
