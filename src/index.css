@@ -348,7 +348,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .menurow.on .mi { background:rgba(49,224,180,.18); color:var(--teal); }
 
 /* riordino a trascinamento */
-.reobox { position:relative; touch-action:none; margin:6px 0; }
+.reobox { position:relative; touch-action:pan-y; margin:6px 0; }
 .reorow { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 4px;
   border-radius:13px; background:var(--surf); border:1px solid var(--hair); transition:transform .16s ease; }
 .reorow.dragging { transition:none; z-index:3; background:var(--surf2); box-shadow:0 10px 26px rgba(0,0,0,.55); }
