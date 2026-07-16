@@ -12,7 +12,7 @@ import {
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
-import { serieLoggata, serieRimossa, sessioneChiusa, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
+import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -1111,6 +1111,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
     setS({ ...s, finishedDate: today(), finishedKcal: kcal, finishedHealth: health }) // conclusa + payload Salute
   }
   const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
+  const abort = async () => {
+    if (!(await confirmDlg('Abbandonare l\'allenamento?', 'Le serie segnate in questa sessione verranno cancellate. Non conta come completato.'))) return
+    const ids = sessioneAnnullata() // via dal cloud, torna gli id da togliere in locale
+    setS({ ...s, log: s.log.filter((l) => !(l.id && ids.includes(l.id))) })
+    setWorkoutStart(null); stopRest()
+  }
 
   if (!items.length) return (
     <>
@@ -1159,6 +1165,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
             <div className="crumb">{curScheda(s)?.name} · allenamento</div>
             <div className="wbar-day">{day?.name}</div>
           </div>
+          {workoutStart != null && <button onClick={abort} style={{ width: 'auto', padding: '8px 12px', marginRight: 8, background: 'transparent', color: 'var(--coral)', fontSize: 13 }}>Annulla</button>}
           <button className="finito" onClick={finish}>Finito</button>
         </div>
         <div className="wstats">

@@ -66,7 +66,7 @@ supa?.auth.onAuthStateChange((_e, sess) => {
 // --- Sessione di allenamento corrente ---
 // Persistita: sopravvive a reload e blocco telefono. 3 ore senza serie = seduta nuova.
 const SK = 'carico-sess'
-type Sess = { id: string; lastSetAt: number; n: number }
+type Sess = { id: string; lastSetAt: number; n: number; ids: string[] }
 let sess: Sess | null = JSON.parse(localStorage.getItem(SK) ?? 'null')
 const saveSess = () => localStorage.setItem(SK, JSON.stringify(sess))
 const GAP_MS = 3 * 3600_000
@@ -90,12 +90,12 @@ function uuid(): string {
 export function serieLoggata(esercizio: string, peso: number, reps: number, rpe: number | null): string {
   const now = Date.now()
   if (!sess || now - sess.lastSetAt > GAP_MS) {
-    sess = { id: uuid(), lastSetAt: now, n: 0 }
+    sess = { id: uuid(), lastSetAt: now, n: 0, ids: [] }
     enq({ op: 'ins', t: 'sessione', row: { id: sess.id, inizio: new Date(now).toISOString() } })
   }
   const recupero_sec = sess.n === 0 ? null : Math.round((now - sess.lastSetAt) / 1000)
   const id = uuid()
-  sess.n += 1; sess.lastSetAt = now; saveSess()
+  sess.n += 1; sess.lastSetAt = now; (sess.ids ??= []).push(id); saveSess()
   enq({ op: 'ins', t: 'serie', row: {
     id, sessione_id: sess.id, esercizio, ordine: sess.n,
     peso, reps, rpe, recupero_sec, ts: new Date(now).toISOString(),
@@ -110,6 +110,17 @@ export function sessioneChiusa() {
   if (!sess) return
   enq({ op: 'upd', t: 'sessione', id: sess.id, patch: { fine: new Date().toISOString() } })
   sess = null; saveSess()
+}
+
+// Abbandona la sessione: cancella dal cloud le serie segnate + la sessione, e torna i loro id
+// così l'app le toglie anche dallo stato locale.
+export function sessioneAnnullata(): string[] {
+  if (!sess) return []
+  const ids = sess.ids ?? []
+  for (const id of ids) enq({ op: 'del', t: 'serie', id })
+  enq({ op: 'del', t: 'sessione', id: sess.id })
+  sess = null; saveSess()
+  return ids
 }
 
 // --- Eventi giornalieri: upsert per giorno (una riga per data) ---
