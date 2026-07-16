@@ -800,6 +800,8 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
 }
 
 const mmss = (sec: number) => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
+// Durata allenamento: sotto l'ora min:sec, oltre i 60 min in "1h 05m"
+const durataFmt = (sec: number) => sec < 3600 ? mmss(sec) : `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}m`
 
 // Popup timer flottante: recupero + crono, visibile ovunque sopra la nav
 // Popup flottante del recupero: appare solo mentre il timer va, visibile su ogni schermata
@@ -963,6 +965,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   }
   const removeExtra = (ex: string) =>
     setS({ ...s, extras: s.extras.filter((e) => !(e.date === today() && e.item.ex === ex)) })
+  // Rimuove un esercizio durante l'allenamento. Gli extra spariscono e basta; per un esercizio della
+  // scheda chiedo conferma (lo toglie da quel giorno della scheda). Le serie già segnate restano nello storico.
+  const removeEsercizio = async (ex: string, isExtra: boolean) => {
+    setMenu(null)
+    if (isExtra) return removeExtra(ex)
+    if (!(await confirmDlg('Rimuovere l\'esercizio?', ex + ' — sparisce da questo giorno della scheda.'))) return
+    const d = structuredClone(s)
+    const items = d.schede[s.activeScheda].days[s.activeDay].items
+    const i = items.findIndex((x) => x.ex === ex)
+    if (i >= 0) items.splice(i, 1)
+    setS(d)
+  }
 
   // Ingranaggio: opzioni runtime sull'esercizio in corso
   const patchItem = (ex: string, isExtra: boolean, fn: (t: PlanItem) => void) => {
@@ -1148,7 +1162,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
           <button className="finito" onClick={finish}>Finito</button>
         </div>
         <div className="wstats">
-          <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? mmss(dur) : '—'}</div></div>
+          <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</div></div>
           <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
           <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
         </div>
@@ -1196,9 +1210,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
               return (
                 <div className={'wrow st-' + sp.type + (active ? ' active' : ' pending')} key={i}>
                   <span className="sidx">{i + 1}</span>
-                  <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} inputMode="decimal" placeholder="kg" />
+                  <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
                   <span className="x">×</span>
-                  <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} inputMode="numeric" placeholder="reps" />
+                  <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
                   <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
                     <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
                   </select>
@@ -1242,6 +1256,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
                 </button>
               )}
+              <button className="menurow" style={{ color: 'var(--coral)' }} onClick={() => removeEsercizio(menu.it.ex, menu.isExtra)}>
+                <span className="mi">✕</span>Rimuovi esercizio
+              </button>
             </div>
           </div>
         </div>
