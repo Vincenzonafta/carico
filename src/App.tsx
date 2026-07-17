@@ -729,16 +729,34 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       )}
 
       <h2>Esercizi</h2>
+      {items.length === 0 && (
+        <div className="card"><p className="sm mut" style={{ margin: '10px 2px' }}>Giorno vuoto: aggiungi esercizi dall'archivio ↓</p></div>
+      )}
+      {items.length > 0 && edit == null && (
+        <>
+          <p className="hint">Tocca per modificare · tieni premuto e trascina per riordinare</p>
+          <DragList items={items} rowH={64} keyOf={(it) => it.ex}
+            render={(it) => (<>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
+                <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}{it.note ? ' · ✎' : ''}</div>
+              </div>
+              <span className="chev">›</span>
+            </>)}
+            onTap={(i) => setEdit(i)}
+            onReorder={(order) => mutate((d) => { const dd = d.schede[s.activeScheda].days[s.activeDay]; dd.items = order.map((i2) => dd.items[i2]) })} />
+        </>
+      )}
+      {items.length > 0 && edit != null && (
       <div className="card" style={{ padding: '4px 12px' }}>
-        {items.length ? items.map((it, i) => {
+        {items.map((it, i) => {
           const tag = schemeTag(it)
           return (
             <div key={i}>
               <div className="set" onClick={() => setEdit(edit === i ? null : i)} style={{ cursor: 'pointer' }}>
-                <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <div style={{ minWidth: 0 }}>
                   <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && items[i + 1] && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Superset con {items[i + 1].ex}</span>}
-                  <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
+                  <div className="meta num">{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
                   {it.note && <div className="note">✎ {it.note}</div>}
                 </div>
                 <span className="del" style={{ marginLeft: 'auto' }}>{edit === i ? '▾' : '▸'}</span>
@@ -793,8 +811,9 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
               )}
             </div>
           )
-        }) : <p className="sm mut" style={{ margin: '10px 2px' }}>Giorno vuoto: aggiungi esercizi dall'archivio ↓</p>}
+        })}
       </div>
+      )}
 
       <button style={{ marginTop: 12 }} className="ghost" onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>
       {picker && (
@@ -878,6 +897,100 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
   )
 }
 
+// Lista riordinabile: TAP = apri, TIENI PREMUTO = trascina (auto-scroll ai bordi, rilascio = conferma).
+// Unica implementazione del drag, usata dall'overview allenamento e dall'editor del giorno.
+function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }: {
+  items: T[]; rowH: number
+  keyOf: (item: T) => string
+  rowClass?: (item: T) => string
+  render: (item: T) => React.ReactNode
+  onTap: (index: number) => void
+  onReorder: (order: number[]) => void
+}) {
+  const [order2, setOrder2] = useState<number[] | null>(null)
+  const [dragPos, setDragPos] = useState<{ pos: number; rel: number } | null>(null)
+  const obox = useRef<HTMLDivElement>(null)
+  const dr = useRef({ y: 0, startY: 0, pos: 0, order: [] as number[], raf: 0, active: false, moved: false, timer: null as ReturnType<typeof setTimeout> | null })
+  useEffect(() => { // iOS: blocca lo scroll pagina SOLO a drag attivo (listener non-passive)
+    const stop = (e: TouchEvent) => { if (dr.current.active) e.preventDefault() }
+    document.addEventListener('touchmove', stop, { passive: false })
+    return () => document.removeEventListener('touchmove', stop)
+  }, [])
+  const upd = () => {
+    if (!obox.current) return
+    const rel = dr.current.y - obox.current.getBoundingClientRect().top // rect fresco: vale anche dopo lo scroll
+    const target = Math.max(0, Math.min(dr.current.order.length - 1, Math.floor(rel / rowH)))
+    if (target !== dr.current.pos) {
+      const n = [...dr.current.order]; const [m] = n.splice(dr.current.pos, 1); n.splice(target, 0, m)
+      dr.current.order = n; dr.current.pos = target
+      setOrder2(n)
+    }
+    setDragPos({ pos: target, rel })
+  }
+  const loop = () => { // auto-scroll continuo della pagina ai bordi
+    const dy = dr.current.y < 150 ? -9 : dr.current.y > window.innerHeight - 170 ? 9 : 0
+    if (dy) { window.scrollBy(0, dy); upd() }
+    dr.current.raf = requestAnimationFrame(loop)
+  }
+  const stopTimer = () => { if (dr.current.timer) { clearTimeout(dr.current.timer); dr.current.timer = null } }
+  const down = (e: React.PointerEvent, pos: number) => {
+    const el = e.currentTarget as HTMLElement, pid = e.pointerId
+    dr.current = { ...dr.current, y: e.clientY, startY: e.clientY, pos, order: items.map((_, i) => i), active: false, moved: false }
+    stopTimer()
+    dr.current.timer = setTimeout(() => { // tenuto fermo: parte il drag
+      dr.current.active = true; dr.current.moved = true // moved: il click dopo non deve aprire
+      el.setPointerCapture?.(pid)
+      navigator.vibrate?.(30)
+      setOrder2([...dr.current.order])
+      dr.current.raf = requestAnimationFrame(loop)
+      upd()
+    }, 260)
+  }
+  const move = (e: React.PointerEvent) => {
+    dr.current.y = e.clientY
+    if (!dr.current.active) { // si muove prima del long-press: è uno scroll, annulla l'attesa
+      if (Math.abs(e.clientY - dr.current.startY) > 10) stopTimer()
+      return
+    }
+    upd()
+  }
+  const up = () => {
+    stopTimer()
+    if (!dr.current.active) return
+    dr.current.active = false
+    cancelAnimationFrame(dr.current.raf)
+    onReorder(dr.current.order) // rilascio = conferma
+    setOrder2(null); setDragPos(null)
+  }
+  const cancel = () => { // gesto reclamato dal browser: annulla senza applicare
+    stopTimer()
+    if (!dr.current.active) return
+    dr.current.active = false
+    cancelAnimationFrame(dr.current.raf)
+    setOrder2(null); setDragPos(null)
+  }
+  const tap = (idx: number) => {
+    if (dr.current.moved) { dr.current.moved = false; return } // era un drag, non un tap
+    onTap(idx)
+  }
+  return (
+    <div className="reobox" ref={obox} style={{ height: items.length * rowH }}>
+      {(order2 ?? items.map((_, i) => i)).map((oi, pos) => {
+        const dragging = order2 != null && dragPos?.pos === pos
+        const y = dragging ? dragPos!.rel - rowH / 2 : pos * rowH + 4
+        return (
+          <div key={keyOf(items[oi])} className={'ocard' + (dragging ? ' dragging' : '') + (rowClass ? ' ' + rowClass(items[oi]) : '')}
+            style={{ transform: `translateY(${y}px)`, height: rowH - 8 }}
+            onPointerDown={(e) => down(e, pos)} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
+            onClick={() => tap(oi)}>
+            {render(items[oi])}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 type Draft = { kg: string; reps: string; rpe: string }
 
 // Calcolatore bilanciere: bilanciere + dischi per lato -> peso totale (2 lati).
@@ -940,8 +1053,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [swap, setSwap] = useState<{ ex: string; isExtra: boolean } | null>(null)
   const [restPick, setRestPick] = useState<{ ex: string; isExtra: boolean } | null>(null)
   const [focus, setFocus] = useState<number | null>(null)     // vista focus: indice esercizio (null = overview)
-  const [order2, setOrder2] = useState<number[] | null>(null) // ordine live durante il drag in overview
-  const [dragPos, setDragPos] = useState<{ pos: number; rel: number } | null>(null)
 
   const addExtra = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -996,72 +1107,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     setS(d)
   }
 
-  // --- Riordino direttamente in overview: tieni premuto una card e trascinala. Il rilascio conferma. ---
-  const OROW = 62
-  const obox = useRef<HTMLDivElement>(null)
-  const dr = useRef({ y: 0, startY: 0, pos: 0, order: [] as number[], raf: 0, active: false, moved: false, timer: null as ReturnType<typeof setTimeout> | null })
-  useEffect(() => { // iOS: blocca lo scroll pagina SOLO a drag attivo (listener non-passive)
-    const stop = (e: TouchEvent) => { if (dr.current.active) e.preventDefault() }
-    document.addEventListener('touchmove', stop, { passive: false })
-    return () => document.removeEventListener('touchmove', stop)
-  }, [])
-  const dragUpd = () => {
-    if (!obox.current) return
-    const rel = dr.current.y - obox.current.getBoundingClientRect().top // rect fresco: vale anche dopo lo scroll
-    const target = Math.max(0, Math.min(dr.current.order.length - 1, Math.floor(rel / OROW)))
-    if (target !== dr.current.pos) {
-      const n = [...dr.current.order]; const [m] = n.splice(dr.current.pos, 1); n.splice(target, 0, m)
-      dr.current.order = n; dr.current.pos = target
-      setOrder2(n)
-    }
-    setDragPos({ pos: target, rel })
-  }
-  const dragLoop = () => { // auto-scroll continuo della pagina ai bordi
-    const dy = dr.current.y < 150 ? -9 : dr.current.y > window.innerHeight - 170 ? 9 : 0
-    if (dy) { window.scrollBy(0, dy); dragUpd() }
-    dr.current.raf = requestAnimationFrame(dragLoop)
-  }
-  const stopTimer = () => { if (dr.current.timer) { clearTimeout(dr.current.timer); dr.current.timer = null } }
-  const cardDown = (e: React.PointerEvent, pos: number) => {
-    const el = e.currentTarget as HTMLElement, pid = e.pointerId
-    dr.current = { ...dr.current, y: e.clientY, startY: e.clientY, pos, order: plan.map((_, i) => i), active: false, moved: false }
-    stopTimer()
-    dr.current.timer = setTimeout(() => { // tenuto fermo: parte il drag
-      dr.current.active = true; dr.current.moved = true // moved: il click successivo non deve aprire il focus
-      el.setPointerCapture?.(pid)
-      navigator.vibrate?.(30)
-      setOrder2([...dr.current.order])
-      dr.current.raf = requestAnimationFrame(dragLoop)
-      dragUpd()
-    }, 260)
-  }
-  const cardMove = (e: React.PointerEvent) => {
-    dr.current.y = e.clientY
-    if (!dr.current.active) { // si muove prima del long-press: è uno scroll, annulla l'attesa
-      if (Math.abs(e.clientY - dr.current.startY) > 10) stopTimer()
-      return
-    }
-    dragUpd()
-  }
-  const cardUp = () => {
-    stopTimer()
-    if (!dr.current.active) return
-    dr.current.active = false
-    cancelAnimationFrame(dr.current.raf)
-    applyOrder(dr.current.order) // rilascio = conferma
-    setOrder2(null); setDragPos(null)
-  }
-  const cardCancel = () => { // gesto reclamato dal browser: annulla senza applicare
-    stopTimer()
-    if (!dr.current.active) return
-    dr.current.active = false
-    cancelAnimationFrame(dr.current.raf)
-    setOrder2(null); setDragPos(null)
-  }
-  const cardTap = (idx: number) => {
-    if (dr.current.moved) { dr.current.moved = false; return } // era un drag, non un tap
-    setFocus(idx)
-  }
   const toggleSuperset = (it: PlanItem) => { patchItem(it.ex, false, (t) => { t.ss = !t.ss }); setMenu(null) }
   const doSwap = (name: string) => {
     if (!swap) return
@@ -1348,30 +1393,27 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           </div>
           <p className="hint">Tocca un esercizio per allenarti · tieni premuto e trascina per riordinare · readiness <b className="num">{r}</b></p>
 
-          <div className="reobox" ref={obox} style={{ height: plan.length * OROW }}>
-            {(order2 ?? plan.map((_, i) => i)).map((planIdx, pos) => {
-              const it = plan[planIdx]
+          <DragList items={plan} rowH={78} keyOf={(it) => it.ex}
+            rowClass={(it) => {
+              const pi = plan.indexOf(it)
+              const exDone = Math.min(logOf(it.ex).length, specs(it).length) >= specs(it).length
+              return (exDone ? 'done2 ' : '') + (it.ss || (pi > 0 && plan[pi - 1]?.ss) ? 'pair' : '')
+            }}
+            render={(it) => {
               const sps = specs(it)
               const done = Math.min(logOf(it.ex).length, sps.length)
               const exDone = done >= sps.length
-              const dragging = order2 != null && dragPos?.pos === pos
-              const y = dragging ? dragPos!.rel - OROW / 2 : pos * OROW + 4
-              const inPair = it.ss || (planIdx > 0 && plan[planIdx - 1]?.ss)
-              return (
-                <div key={it.ex} className={'ocard' + (dragging ? ' dragging' : '') + (exDone ? ' done2' : '') + (inPair ? ' pair' : '')}
-                  style={{ transform: `translateY(${y}px)`, height: OROW - 8 }}
-                  onPointerDown={(e) => cardDown(e, pos)} onPointerMove={cardMove}
-                  onPointerUp={cardUp} onPointerCancel={cardCancel} onClick={() => cardTap(planIdx)}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
-                    <div className="meta num">{it.muscle} · {schemeSummary(it)}{it.note ? ' · ✎' : ''}</div>
-                  </div>
-                  <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
-                  <span className="chev">›</span>
+              return (<>
+                <span className="othumb"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <b className="otitle">{it.ex}</b>
+                  <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)}{it.ss ? ' · SS' : ''}{it.note ? ' · ✎' : ''}</div>
                 </div>
-              )
-            })}
-          </div>
+                <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
+                <span className="chev">›</span>
+              </>)
+            }}
+            onTap={(i) => setFocus(i)} onReorder={applyOrder} />
           {extras.map((it, j) => {
             const idx = plan.length + j
             const sps = specs(it)
@@ -1379,9 +1421,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             const exDone = done >= sps.length
             return (
               <div key={it.ex} className={'ocard flow' + (exDone ? ' done2' : '')} onClick={() => setFocus(idx)}>
+                <span className="othumb"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <b style={{ fontSize: 15 }}>{it.ex}</b><span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>
-                  <div className="meta num">{it.muscle} · {schemeSummary(it)}</div>
+                  <b className="otitle">{it.ex}</b>
+                  <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)} · extra</div>
                 </div>
                 <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
                 {done === 0 && <span className="del" onClick={(e) => { e.stopPropagation(); removeExtra(it.ex) }}>✕</span>}
