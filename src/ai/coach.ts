@@ -3,7 +3,7 @@
 // i dati che leggerà passano da Supabase che è già protetto per-utente dall'RLS.
 export type ChatMsg = { role: 'user' | 'model'; text: string }
 
-const MODEL = 'gemini-2.5-flash'
+const MODEL = 'gemini-3.5-flash'
 
 const SYSTEM = `Sei il coach di CARICO, un'app italiana di allenamento in palestra e nutrizione.
 Sei un preparatore esperto: allenamento coi pesi (ipertrofia e forza), programmazione, recupero, alimentazione sportiva.
