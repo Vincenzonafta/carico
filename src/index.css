@@ -147,14 +147,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .tbar { height:7px; flex:1; }
 
 /* ============ allenamento in corso ============ */
-.excard { padding:13px 14px; margin-top:12px; }
+.excard { padding:15px 16px; margin-top:12px; }
 .excard.completed { opacity:.5; border-color:rgba(201,249,78,.4); }
 .exhead { display:flex; align-items:center; gap:11px; margin-bottom:8px; }
-.exprog { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--mut);
-  background:var(--surf2); border-radius:9px; padding:6px 10px; flex:none; margin-left:auto; }
-.exprog.ok { color:var(--lime); background:rgba(201,249,78,.12); }
+.exprog { font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--mut);
+  background:var(--surf2); border-radius:999px; padding:6px 12px; flex:none; margin-left:auto; }
+.exprog.ok { color:var(--lime); background:rgba(201,249,78,.14); }
 
-.wrow { display:grid; grid-template-columns:28px 1fr 12px 1fr 74px 52px; gap:7px; align-items:center; padding:6px 0; }
+.wrow { display:grid; grid-template-columns:28px 1fr 12px 1fr 74px 52px; gap:7px; align-items:center; padding:8px 0; }
 .wrow input, .wrow select { padding:11px 6px; font-size:16px; border-radius:10px; text-align:center; min-width:0; }
 .wrow select { padding:11px 2px; font-size:13.5px; }
 .wrow .x { text-align:center; color:var(--mut2); }
@@ -242,8 +242,8 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .editor > button { grid-column:1 / -1; }
 .editor > .full { grid-column:1 / -1; }
 
-.stag { display:inline-block; margin-left:8px; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
-  text-transform:uppercase; font-weight:700; color:var(--lime); background:rgba(201,249,78,.14); border-radius:7px; padding:3px 7px; vertical-align:middle; }
+.stag { display:inline-block; margin-left:8px; font-family:var(--mono); font-size:10px; letter-spacing:.07em;
+  text-transform:uppercase; font-weight:700; color:var(--lime); background:rgba(201,249,78,.14); border-radius:999px; padding:3px 9px; vertical-align:middle; }
 
 .presets { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
 .preset { width:auto; padding:9px 13px; font-size:13.5px; font-weight:600; font-family:var(--sans);
@@ -254,13 +254,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .slr { padding:4px 0; }
 .slr select, .slr input { padding:9px 6px; font-size:13.5px; border-radius:8px; }
 .slr .del { margin:0; text-align:center; }
-.sidx { width:24px; height:24px; border-radius:7px; background:var(--surf2); color:var(--mut); flex:none;
-  font-family:var(--mono); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
-.sidx.ok { background:rgba(201,249,78,.22); color:var(--lime); }
-.st-warmup .sidx { background:rgba(99,166,245,.22); color:var(--blue); }
-.st-ramp .sidx { background:rgba(201,249,78,.22); color:var(--lime); }
-.st-backoff .sidx { background:rgba(49,224,180,.22); color:var(--teal); }
-.st-drop .sidx, .st-failure .sidx { background:rgba(251,111,132,.22); color:var(--coral); }
+/* numerini cerchiati delle serie (stile app: ① ② ③) */
+.sidx { width:26px; height:26px; border-radius:50%; background:transparent; border:1.5px solid var(--hair); color:var(--mut); flex:none;
+  font-family:var(--mono); font-size:11.5px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+.sidx.ok { background:var(--lime); border-color:var(--lime); color:var(--lime-ink); }
+.st-warmup .sidx { border-color:rgba(99,166,245,.65); color:var(--blue); }
+.st-ramp .sidx { border-color:rgba(201,249,78,.65); color:var(--lime); }
+.st-backoff .sidx { border-color:rgba(49,224,180,.65); color:var(--teal); }
+.st-drop .sidx, .st-failure .sidx { border-color:rgba(251,111,132,.65); color:var(--coral); }
 .st-amrap .sidx { background:rgba(245,184,74,.22); color:var(--amber); }
 
 /* ============ chip e segmenti ============ */
@@ -313,9 +314,9 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .wstats .v { font-size:17px; font-weight:800; margin-top:3px; }
 
 /* chip recupero cliccabile sotto ogni esercizio */
-.restchip { width:auto; margin:2px 0 8px; padding:7px 12px; font-size:13px; font-weight:600; font-family:var(--sans);
-  background:rgba(49,224,180,.1); color:var(--teal); border:1px solid rgba(49,224,180,.3); border-radius:10px;
-  display:inline-flex; align-items:center; gap:7px; }
+.restchip { width:auto; margin:2px 0 10px; padding:9px 16px; font-size:13.5px; font-weight:700; font-family:var(--sans);
+  background:rgba(49,224,180,.1); color:var(--teal); border:1px solid rgba(49,224,180,.3); border-radius:999px;
+  display:inline-flex; align-items:center; gap:8px; }
 .restchip .ic { font-size:14px; }
 .restchip b { color:var(--teal); }
 
@@ -351,13 +352,16 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .reobox { position:relative; touch-action:pan-y; margin:6px 0; }
 
 /* overview allenamento: card leggere, tap = focus, tieni premuto = riordina */
-.ocard { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 13px;
-  background:var(--surf); border:1px solid var(--hair); border-radius:15px; overflow:hidden;
-  transition:transform .16s ease; touch-action:pan-y; -webkit-touch-callout:none; cursor:pointer; }
+.ocard { position:absolute; left:0; right:0; display:flex; align-items:center; gap:12px; padding:0 16px;
+  background:var(--surf); border:1px solid var(--hair); border-radius:16px; overflow:hidden;
+  transition:transform .16s ease; touch-action:pan-y; -webkit-touch-callout:none; cursor:pointer;
+  box-shadow:0 2px 10px rgba(0,0,0,.22); }
 .ocard.flow { position:static; margin-top:8px; height:54px; transition:none; }
 .ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }
 .ocard.done2 { opacity:.55; }
+.ocard.pair { border-left:3px solid rgba(49,224,180,.55); }
 .ocard .chev { color:var(--mut2); font-size:20px; flex:none; }
+.ocard .meta { margin-top:3px; }
 
 /* barra sticky della vista focus (durata + navigazione tra esercizi) */
 .focusbar { position:fixed; left:50%; transform:translateX(-50%); width:calc(100% - 18px); max-width:412px;

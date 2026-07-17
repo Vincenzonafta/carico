@@ -1254,7 +1254,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             <div className="bc">
               <button className="back" onClick={() => setFocus(null)}>‹</button>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="crumb" style={{ color: mcolor(it.muscle) }}>{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}</div>
+                <div className="crumb">{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}</div>
                 <div className="bt1">{it.ex}{tag && <span className="stag">{tag}</span>}</div>
               </div>
               <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
@@ -1358,16 +1358,15 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               const y = dragging ? dragPos!.rel - OROW / 2 : pos * OROW + 4
               const inPair = it.ss || (planIdx > 0 && plan[planIdx - 1]?.ss)
               return (
-                <div key={it.ex} className={'ocard' + (dragging ? ' dragging' : '') + (exDone ? ' done2' : '')}
+                <div key={it.ex} className={'ocard' + (dragging ? ' dragging' : '') + (exDone ? ' done2' : '') + (inPair ? ' pair' : '')}
                   style={{ transform: `translateY(${y}px)`, height: OROW - 8 }}
                   onPointerDown={(e) => cardDown(e, pos)} onPointerMove={cardMove}
                   onPointerUp={cardUp} onPointerCancel={cardCancel} onClick={() => cardTap(planIdx)}>
-                  <span className="exbar" style={{ background: inPair ? 'var(--teal)' : mcolor(it.muscle) }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <b style={{ fontSize: 14.5 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
-                    <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)}{it.note ? ' · ✎' : ''}</div>
+                    <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
+                    <div className="meta num">{it.muscle} · {schemeSummary(it)}{it.note ? ' · ✎' : ''}</div>
                   </div>
-                  <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+                  <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
                   <span className="chev">›</span>
                 </div>
               )
@@ -1380,12 +1379,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             const exDone = done >= sps.length
             return (
               <div key={it.ex} className={'ocard flow' + (exDone ? ' done2' : '')} onClick={() => setFocus(idx)}>
-                <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <b style={{ fontSize: 14.5 }}>{it.ex}</b><span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>
-                  <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)}</div>
+                  <b style={{ fontSize: 15 }}>{it.ex}</b><span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>
+                  <div className="meta num">{it.muscle} · {schemeSummary(it)}</div>
                 </div>
-                <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+                <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
                 {done === 0 && <span className="del" onClick={(e) => { e.stopPropagation(); removeExtra(it.ex) }}>✕</span>}
                 <span className="chev">›</span>
               </div>
