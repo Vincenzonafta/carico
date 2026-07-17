@@ -484,6 +484,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }
 .authmsg { margin-top:16px; text-align:center; font-size:13.5px; line-height:1.45; color:var(--amber); }
 
+/* ============ chat coach IA ============ */
+.chatlog { display:flex; flex-direction:column; gap:9px; padding-bottom:4px; }
+.bubble { padding:11px 14px; border-radius:16px; max-width:88%; line-height:1.5; font-size:14.5px; white-space:pre-wrap; overflow-wrap:break-word; }
+.bubble.me { align-self:flex-end; background:var(--lime); color:var(--lime-ink); border-bottom-right-radius:5px; }
+.bubble.ai { align-self:flex-start; background:var(--surf); border:1px solid var(--hair); border-bottom-left-radius:5px; }
+.chatrow { margin-top:12px; position:sticky; bottom:calc(76px + env(safe-area-inset-bottom)); }
+.chatrow input { flex:1; }
+
 /* navbar: si ritira giù quando la tastiera è aperta, così non "salta" */
 nav { transition:transform .18s ease; }
 nav.kb { transform:translateY(160%); pointer-events:none; }

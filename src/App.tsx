@@ -13,6 +13,7 @@ import {
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
+import { chiamaCoach, type ChatMsg } from './ai/coach'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -2199,35 +2200,84 @@ function Calendario({ s, onRepeat }: { s: State; onRepeat: (date: string) => voi
   )
 }
 
-function Coach({ s }: { s: State }) {
+// Contesto per il coach IA: un riassunto compatto dello stato dell'atleta, letto dai dati locali.
+// ponytail: v1 senza tool — il contesto viene iniettato nel prompt; i tool su Supabase arrivano alla tappa 2.
+function contestoCoach(s: State): string {
   const r = readiness(s.checkin)
+  const righe: string[] = []
+  righe.push(`Data: ${today()}`)
+  righe.push(s.checkin.date === today()
+    ? `Check-in di oggi: readiness ${r}/100 (sonno ${s.checkin.sonno}/10${s.checkin.ore ? ` = ${s.checkin.ore}h` : ''}, energia ${s.checkin.energia}/10, DOMS ${s.checkin.doms}/10, stress ${s.checkin.stress}/10)`
+    : 'Check-in di oggi: NON fatto')
+  const sc = curScheda(s)
+  if (sc) righe.push(`Scheda attiva: "${sc.name}" (${sc.days.map((d) => d.name).join(' / ')})`)
+  righe.push(`Obiettivo: ${s.goal.ex} a ${s.goal.targetKg} kg (attuale 1RM stimato ${fmt(bestE1rm(s.log, s.goal.ex))} kg)`)
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
+  const since = weekAgo.toISOString().slice(0, 10)
+  const wk = s.log.filter((l) => l.date > since)
+  righe.push(`Ultimi 7 giorni: ${new Set(wk.map((l) => l.date)).size} sedute, ${wk.length} serie, ${fmt(wk.reduce((a, l) => a + l.kg * l.reps, 0) / 1000)} t di volume`)
   const rep = weeklyReport(s)
-  const msgs: string[] = []
-  if (s.checkin.date !== today())
-    msgs.push('Non hai fatto il <b>check-in di oggi</b>: 30 secondi nella tab Oggi e i pesi diventano affidabili.')
-  for (const f of rep.flags) {
-    const ds = historyDates(s.log, f.ex)
-    msgs.push(`<span class="warn">${f.ex}: fatica in accumulo.</span> A parità di carico l'RPE medio è passato da <b>${fmt(avgRpeOf(s.log, f.ex, ds[0]))}</b> a <b>${fmt(avgRpeOf(s.log, f.ex, ds[ds.length - 1]))}</b>. Ho già ridotto la proposta: ripetizioni pulite e tra una settimana risaliamo.`)
+  if (rep.scarico) righe.push(`Segnali di fatica (RPE in salita a parità di carico): ${rep.flags.map((f) => f.ex).join(', ')} → valuta scarico`)
+  const oggi = nutritionToday(s.meals, today())
+  righe.push(`Alimentazione oggi: ${Math.round(oggi.kcal)}/${s.target.kcal} kcal, proteine ${Math.round(oggi.protein)}/${s.target.protein} g`)
+  if (s.body.length) righe.push(`Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg`)
+  righe.push(`Ultime serie registrate: ${s.log.slice(-8).map((l) => `${l.date} ${l.ex} ${fmt(l.kg)}x${l.reps}${l.rpe ? `@${fmt(l.rpe)}` : ''}`).join(' · ') || 'nessuna'}`)
+  return righe.join('\n')
+}
+
+function Coach({ s }: { s: State }) {
+  const key = s.settings.geminiKey?.trim()
+  const [chat, setChat] = useState<ChatMsg[]>([])
+  const [inp, setInp] = useState('')
+  const [busy, setBusy] = useState(false)
+  const endRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [chat, busy])
+  const send = async () => {
+    const t = inp.trim()
+    if (!t || busy || !key) return
+    const nuova: ChatMsg[] = [...chat, { role: 'user', text: t }]
+    setChat(nuova); setInp(''); setBusy(true)
+    try {
+      const risposta = await chiamaCoach(nuova, key, contestoCoach(s))
+      setChat([...nuova, { role: 'model', text: risposta }])
+    } catch (e) {
+      setChat([...nuova, { role: 'model', text: '⚠ ' + ((e as Error).message || 'Errore sconosciuto') }])
+    } finally { setBusy(false) }
   }
-  if (r < 65) msgs.push(`Readiness <span class="warn">${r}/100</span>: oggi conta presentarsi. Proposte ridotte del 10%.`)
-  if (!msgs.length) msgs.push(`Tutto in linea: readiness <b>${r}/100</b> e nessun segnale di accumulo. Chiudi le serie a RPE 8.`)
+
+  if (!key) return (
+    <>
+      <h2>Coach IA</h2>
+      <div className="card">
+        <p className="sm" style={{ marginTop: 0, lineHeight: 1.6 }}>
+          Il coach legge i tuoi dati (allenamenti, recupero, sonno, alimentazione) e ti consiglia come un preparatore.
+          Per attivarlo serve la <b>tua</b> chiave API di Google Gemini — gratuita.
+        </p>
+        <p className="sm mut" style={{ lineHeight: 1.6 }}>
+          1) Vai su <b>aistudio.google.com</b> ed entra col tuo account Google<br />
+          2) Tocca <b>Get API key</b> → crea la chiave e copiala<br />
+          3) Incollala in <b>Profilo → ⚙ → Coach IA</b>
+        </p>
+      </div>
+    </>
+  )
+
   return (
     <>
-      <h2>Report settimanale</h2>
-      <div className={'verdict ' + (rep.scarico ? 'warn' : 'ok')}>
-        <div className="vt">{rep.scarico ? 'ATTENZIONE' : 'IN LINEA'}</div>
-        <div className="vh">{rep.scarico ? 'Fatica in accumulo' : 'Settimana solida'}</div>
-        <div className="vd">
-          {rep.scarico
-            ? <>Consiglio una <b>settimana di scarico</b>: volume −30%, carichi −10%. Torni a spingere più forte di prima.</>
-            : <>Nessun fondamentale in accumulo. Prosegui con la progressione: aggiungo carico quando l'RPE resta basso.</>}
-        </div>
+      <h2>Coach IA</h2>
+      <div className="chatlog">
+        {chat.length === 0 && (
+          <div className="bubble ai">Ciao! Sono il tuo coach. Chiedimi dei tuoi allenamenti, del peso da caricare, di recupero o alimentazione. Conosco i tuoi dati.</div>
+        )}
+        {chat.map((m, i) => <div key={i} className={'bubble ' + (m.role === 'user' ? 'me' : 'ai')}>{m.text}</div>)}
+        {busy && <div className="bubble ai mut">sta scrivendo…</div>}
+        <div ref={endRef} />
       </div>
-      <h2>Coach</h2>
-      {msgs.map((m, i) => (
-        <div className="msg" key={i}><div className="who">Carico Coach</div><span dangerouslySetInnerHTML={{ __html: m }} /></div>
-      ))}
-      <p className="hint">Beta: coach a regole · la chat AI arriva con l'API</p>
+      <div className="row chatrow">
+        <input value={inp} onChange={(e) => setInp(e.target.value)} placeholder="Scrivi al coach…" enterKeyHint="send"
+          onKeyDown={(e) => { if (e.key === 'Enter') send() }} />
+        <button style={{ width: 'auto', padding: '12px 18px' }} disabled={busy || !inp.trim()} onClick={send}>➤</button>
+      </div>
     </>
   )
 }
@@ -2523,6 +2573,14 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
         </label>
         <button className="ghost" style={{ marginTop: 8 }} onClick={restoreCloud}>Carica dati dal cloud</button>
         <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
+      </div>
+      <h2>Coach IA</h2>
+      <div className="card">
+        <p className="sm mut" style={{ marginTop: 0, lineHeight: 1.55 }}>La tua chiave API Gemini (gratis da <b>aistudio.google.com</b> → Get API key). Attiva la chat nella tab Coach.</p>
+        <input type="password" placeholder="Incolla qui la chiave API" autoComplete="off"
+          value={s.settings.geminiKey ?? ''}
+          onChange={(e) => setS({ ...s, settings: { ...s.settings, geminiKey: e.target.value.trim() || undefined } })} />
+        {s.settings.geminiKey && <p className="sm mut" style={{ marginBottom: 0 }}>Chiave salvata ✓ — sincronizzata col tuo account</p>}
       </div>
       <h2>Cloud</h2>
       <Cloud />
