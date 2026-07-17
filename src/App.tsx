@@ -972,9 +972,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     if (isExtra) return removeExtra(ex)
     if (!(await confirmDlg('Rimuovere l\'esercizio?', ex + ' — sparisce da questo giorno della scheda.'))) return
     const d = structuredClone(s)
-    const items = d.schede[s.activeScheda].days[s.activeDay].items
-    const i = items.findIndex((x) => x.ex === ex)
-    if (i >= 0) items.splice(i, 1)
+    const dayItems = d.schede[s.activeScheda].days[s.activeDay].items
+    const i = dayItems.findIndex((x) => x.ex === ex)
+    if (i >= 0) {
+      if (i > 0 && dayItems[i - 1].ss) delete dayItems[i - 1].ss // il precedente era in superset col rimosso: sciogli la coppia (senza, il lock resta in stallo)
+      dayItems.splice(i, 1)
+    }
     setS(d)
   }
 
@@ -1236,9 +1239,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
         const ss = inSS(idx)
-        // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A
-        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null
-        const ssPrev = idx > 0 && items[idx - 1]?.ss ? items[idx - 1] : null
+        // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A.
+        // Il pairing vale SOLO tra esercizi di scheda: mai scavalcare verso gli extra.
+        const ssNext = idx + 1 < plan.length && it.ss ? items[idx + 1] : null
+        const ssPrev = idx > 0 && idx < plan.length && items[idx - 1]?.ss ? items[idx - 1] : null
         const ssWait = ssNext && logOf(it.ex).length > logOf(ssNext.ex).length ? ssNext.ex
           : ssPrev && logOf(it.ex).length >= logOf(ssPrev.ex).length ? ssPrev.ex : null
         // Storico: l'ultima seduta passata con questo esercizio, visibile mentre carichi
