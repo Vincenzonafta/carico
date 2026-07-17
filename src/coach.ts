@@ -395,15 +395,23 @@ export const avgRpeOf = avgRpe
 // --- Archivio esercizi (il "database" da cui pescare) ---
 export const MUSCLES = ['Petto', 'Dorso', 'Spalle', 'Bicipiti', 'Tricipiti', 'Gambe', 'Glutei', 'Core', 'Polpacci']
 export const EXERCISES: Exercise[] = [
-  ...['Panca piana', 'Panca inclinata', 'Panca manubri', 'Croci ai cavi', 'Chest press', 'Dip zavorrate', 'Piegamenti'].map((name) => ({ name, muscle: 'Petto' })),
-  ...['Trazioni', 'Lat machine', 'Rematore bilanciere', 'Rematore manubrio', 'Pulley basso', 'Stacco da terra', 'Pullover'].map((name) => ({ name, muscle: 'Dorso' })),
-  ...['Military press', 'Lento avanti', 'Alzate laterali', 'Alzate frontali', 'Alzate posteriori', 'Arnold press', 'Tirate al mento'].map((name) => ({ name, muscle: 'Spalle' })),
-  ...['Curl bilanciere', 'Curl manubri', 'Curl a martello', 'Curl ai cavi', 'Panca Scott'].map((name) => ({ name, muscle: 'Bicipiti' })),
-  ...['French press', 'Push down', 'Dip alle parallele', 'Estensioni sopra la testa', 'Kickback'].map((name) => ({ name, muscle: 'Tricipiti' })),
-  ...['Squat', 'Squat frontale', 'Leg press', 'Affondi', 'Leg extension', 'Leg curl', 'Hack squat', 'Stacco rumeno'].map((name) => ({ name, muscle: 'Gambe' })),
-  ...['Hip thrust', 'Ponte glutei', 'Slanci'].map((name) => ({ name, muscle: 'Glutei' })),
-  ...['Plank', 'Crunch', 'Russian twist', 'Leg raise', 'Ab wheel'].map((name) => ({ name, muscle: 'Core' })),
-  ...['Calf in piedi', 'Calf da seduto'].map((name) => ({ name, muscle: 'Polpacci' })),
+  ...['Panca piana', 'Panca inclinata', 'Panca declinata', 'Panca manubri', 'Panca presa stretta', 'Panca Larsen',
+    'Croci ai cavi', 'Croci con manubri', 'Croci inclinata manubri', 'Pec deck', 'Chest press', 'Dip zavorrate', 'Piegamenti'].map((name) => ({ name, muscle: 'Petto' })),
+  ...['Trazioni', 'Trazioni presa neutra', 'Lat machine', 'Lat machine presa neutra', 'Pulldown braccia tese',
+    'Rematore bilanciere', 'Rematore manubrio', 'Rematore T-bar', 'Rematore seduto ai cavi', 'Pulley basso',
+    'Stacco da terra', 'Stacco sumo', 'Pullover', 'Shrug', 'Iperestensioni'].map((name) => ({ name, muscle: 'Dorso' })),
+  ...['Military press', 'Lento avanti', 'Lento dietro', 'Shoulder press', 'Alzate laterali', 'Alzate laterali ai cavi',
+    'Alzate frontali', 'Alzate posteriori', 'Face pull', 'Arnold press', 'Tirate al mento'].map((name) => ({ name, muscle: 'Spalle' })),
+  ...['Curl bilanciere', 'Curl manubri', 'Curl a martello', 'Curl a martello ai cavi', 'Curl ai cavi',
+    'Curl concentrato', 'Curl panca inclinata', 'Spider curl', 'Panca Scott'].map((name) => ({ name, muscle: 'Bicipiti' })),
+  ...['French press', 'Push down', 'Push down corda', 'Push down presa inversa', 'Dip alle parallele',
+    'Estensioni sopra la testa', 'Estensioni ai cavi dietro la testa', 'Kickback'].map((name) => ({ name, muscle: 'Tricipiti' })),
+  ...['Squat', 'Squat frontale', 'Goblet squat', 'Box squat', 'Sissy squat', 'Leg press', 'Affondi', 'Affondi camminati',
+    'Leg extension', 'Leg curl', 'Hack squat', 'Stacco rumeno', 'Good morning', 'Adduttori alla macchina', 'Abduttori alla macchina'].map((name) => ({ name, muscle: 'Gambe' })),
+  ...['Hip thrust', 'Ponte glutei', 'Kickback ai cavi', 'Slanci'].map((name) => ({ name, muscle: 'Glutei' })),
+  ...['Plank', 'Plank zavorrato', 'Side plank', 'Copenhagen plank', 'Crunch', 'Cable crunch', 'Russian twist',
+    'Leg raise', 'Hanging leg raise', 'Dead bug', 'Ab wheel'].map((name) => ({ name, muscle: 'Core' })),
+  ...['Calf in piedi', 'Calf da seduto', 'Calf alla pressa'].map((name) => ({ name, muscle: 'Polpacci' })),
 ]
 
 export function lookupMuscle(name: string) {

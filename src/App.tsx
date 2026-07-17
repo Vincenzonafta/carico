@@ -246,7 +246,7 @@ export default function App() {
       <InstallPrompt />
 
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
-      {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} />}
+      {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} workoutActive={workoutStart != null} />}
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
@@ -516,7 +516,7 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 }
 
 // Tab Schede: gestione schede + calendario allenamenti (coerente con lo stile del Cibo)
-function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onStart: () => void }) {
+function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State) => void; onStart: () => void; workoutActive: boolean }) {
   const [tab, setTab] = useState<'schede' | 'cal' | 'stats'>('schede')
   const [statsEx, setStatsEx] = useState<string | null>(null)
   const repeatDay = (date: string) => {
@@ -536,7 +536,7 @@ function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onSt
           <button key={k} className={'sg' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
-      {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} />}
+      {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
       {tab === 'cal' && <Calendario s={s} onRepeat={repeatDay} />}
       {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
@@ -544,7 +544,7 @@ function Schede({ s, setS, onStart }: { s: State; setS: (u: State) => void; onSt
   )
 }
 
-function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => void; onStart: () => void }) {
+function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State) => void; onStart: () => void; workoutActive: boolean }) {
   const sc = curScheda(s)
   const items = curItems(s)
   const lib = [...EXERCISES, ...s.customExercises]
@@ -554,7 +554,12 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
   const [picker, setPicker] = useState(false)
   useTop(view)
 
-  const mutate = (fn: (d: State) => void) => { const d = structuredClone(s); fn(d); setS(d) }
+  // Guard: con un allenamento in corso la scheda sotto i piedi non si tocca (né si cambia giorno/scheda attiva)
+  const guardWorkout = () => toast('Allenamento in corso: finiscilo o annullalo prima di modificare le schede')
+  const mutate = (fn: (d: State) => void) => {
+    if (workoutActive) return guardWorkout()
+    const d = structuredClone(s); fn(d); setS(d)
+  }
   const dayItems = (d: State) => d.schede[s.activeScheda].days[s.activeDay].items
   const addItemByName = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -637,7 +642,10 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
         const nEx = x.days.reduce((a, dd) => a + dd.items.length, 0)
         const mus = [...new Set(x.days.flatMap((dd) => dd.items.map((it) => it.muscle)))]
         return (
-          <div className="navcard" key={i} onClick={() => { setS({ ...s, activeScheda: i, activeDay: 0 }); setView('scheda') }}>
+          <div className="navcard" key={i} onClick={() => {
+            if (workoutActive) { if (i !== s.activeScheda) return guardWorkout(); setView('scheda'); return }
+            setS({ ...s, activeScheda: i, activeDay: 0 }); setView('scheda')
+          }}>
             <div style={{ minWidth: 0 }}>
               <b>{x.name}</b>{i === s.activeScheda && <span className="stag">Attiva</span>}
               <div className="meta num">{x.days.length} {x.days.length === 1 ? 'giorno' : 'giorni'} · {nEx} esercizi</div>
@@ -682,7 +690,10 @@ function SchedeManager({ s, setS, onStart }: { s: State; setS: (u: State) => voi
         const mus = [...new Set(dd.items.map((it) => it.muscle))]
         const min = Math.round(dd.items.reduce((a, it) => a + itemSetCount(it) * (it.rest + 45), 0) / 60)
         return (
-          <div className="navcard" key={i} onClick={() => { setS({ ...s, activeDay: i }); setEdit(null); setView('day') }}>
+          <div className="navcard" key={i} onClick={() => {
+            if (workoutActive) { if (i !== s.activeDay) return guardWorkout(); setEdit(null); setView('day'); return }
+            setS({ ...s, activeDay: i }); setEdit(null); setView('day')
+          }}>
             <div style={{ minWidth: 0 }}>
               <b>{dd.name}</b>
               <div className="meta num">{dd.items.length} esercizi{min > 0 && <> · ~{min} min</>}</div>
@@ -1318,6 +1329,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
                 </button>
               )}
+              <button className="menurow" onClick={async () => {
+                setMenu(null)
+                const v = await promptDlg('Nota esercizio', [{ label: 'Nota', value: menu.it.note ?? '', placeholder: 'es. fastidio spalla, presa più larga…' }])
+                if (v) patchItem(menu.it.ex, menu.isExtra, (t) => { t.note = v[0].trim() || undefined })
+              }}>
+                <span className="mi">✎</span>Nota esercizio
+              </button>
               <button className="menurow" style={{ color: 'var(--coral)' }} onClick={() => removeEsercizio(menu.it.ex, menu.isExtra)}>
                 <span className="mi">✕</span>Rimuovi esercizio
               </button>
