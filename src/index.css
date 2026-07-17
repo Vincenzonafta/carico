@@ -349,6 +349,27 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* riordino a trascinamento */
 .reobox { position:relative; touch-action:pan-y; margin:6px 0; }
+
+/* overview allenamento: card leggere, tap = focus, tieni premuto = riordina */
+.ocard { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 13px;
+  background:var(--surf); border:1px solid var(--hair); border-radius:15px; overflow:hidden;
+  transition:transform .16s ease; touch-action:pan-y; -webkit-touch-callout:none; cursor:pointer; }
+.ocard.flow { position:static; margin-top:8px; height:54px; transition:none; }
+.ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }
+.ocard.done2 { opacity:.55; }
+.ocard .chev { color:var(--mut2); font-size:20px; flex:none; }
+
+/* barra sticky della vista focus (durata + navigazione tra esercizi) */
+.focusbar { position:fixed; left:50%; transform:translateX(-50%); width:calc(100% - 18px); max-width:412px;
+  bottom:calc(76px + env(safe-area-inset-bottom)); z-index:24; display:flex; align-items:center; gap:11px;
+  background:var(--surf2); border:1px solid var(--hair); border-radius:16px; padding:8px 14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5); }
+.focusbar.up { bottom:calc(152px + env(safe-area-inset-bottom)); } /* sopra la barra del recupero */
+.focusbar .fbtn { width:48px; flex:none; padding:9px 0; font-size:20px; line-height:1;
+  background:var(--surf); color:var(--chalk); border:1px solid var(--hair); border-radius:12px; }
+.focusbar .fbtn:disabled { opacity:.3; }
+body:has(input:focus:not([type=range]), textarea:focus) .focusbar { display:none; }
+
 .reorow { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 4px;
   border-radius:13px; background:var(--surf); border:1px solid var(--hair); transition:transform .16s ease; }
 .reorow.dragging { transition:none; z-index:3; background:var(--surf2); box-shadow:0 10px 26px rgba(0,0,0,.55); }

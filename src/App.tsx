@@ -248,7 +248,7 @@ export default function App() {
       {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} workoutActive={workoutStart != null} />}
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
-        workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} />}
+        workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} timerActive={timer != null} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
       {tab === 'coach' && <Coach s={s} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
@@ -878,87 +878,6 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
   )
 }
 
-// Riordino a trascinamento: tieni ≡ e sposta, con auto-scroll ai bordi.
-// Il puntatore va catturato sulla MANIGLIA (touch-action:none), non sul contenitore:
-// altrimenti iOS reclama il gesto per lo scroll (pan-y) e uccide il drag con pointercancel.
-// Lo spostamento si applica SOLO con "Fatto": ✕ e tocco fuori annullano.
-function ReorderSheet({ plan, onDone, onClose }: { plan: PlanItem[]; onDone: (order: number[]) => void; onClose: () => void }) {
-  const ROW = 60
-  const [order, setOrder] = useState<number[]>(() => plan.map((_, i) => i))
-  const [drag, setDrag] = useState<{ pos: number; rel: number } | null>(null)
-  const box = useRef<HTMLDivElement>(null)
-  const scroller = useRef<HTMLDivElement>(null)
-  const live = useRef<{ y: number; pos: number; order: number[]; raf: number }>({ y: 0, pos: 0, order: [], raf: 0 })
-
-  // Unico punto che ricalcola posizione e ordine dalla Y del dito (usato da pointermove e dal loop di auto-scroll)
-  const updateFromY = () => {
-    if (!box.current) return
-    const rel = live.current.y - box.current.getBoundingClientRect().top // rect fresco: tiene conto dello scroll
-    const target = Math.max(0, Math.min(live.current.order.length - 1, Math.floor(rel / ROW)))
-    if (target !== live.current.pos) {
-      const n = [...live.current.order]; const [m] = n.splice(live.current.pos, 1); n.splice(target, 0, m)
-      live.current.order = n; live.current.pos = target
-      setOrder(n)
-    }
-    setDrag({ pos: target, rel })
-  }
-  const loop = () => { // auto-scroll continuo finché il dito resta vicino al bordo
-    const sc = scroller.current
-    if (sc) {
-      const r = sc.getBoundingClientRect()
-      const dy = live.current.y < r.top + 56 ? -9 : live.current.y > r.bottom - 56 ? 9 : 0
-      if (dy) { sc.scrollTop += dy; updateFromY() }
-    }
-    live.current.raf = requestAnimationFrame(loop)
-  }
-  const down = (e: React.PointerEvent, pos: number) => {
-    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    live.current = { y: e.clientY, pos, order, raf: requestAnimationFrame(loop) }
-    updateFromY()
-  }
-  const move = (e: React.PointerEvent) => {
-    if (!live.current.raf) return // il ref è la verità: lo stato React arriva un render dopo
-    live.current.y = e.clientY
-    updateFromY()
-  }
-  const up = () => { cancelAnimationFrame(live.current.raf); live.current.raf = 0; setDrag(null) }
-  useEffect(() => () => cancelAnimationFrame(live.current.raf), []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
-        <div className="bc" style={{ margin: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="crumb">Tieni ≡ e trascina · Fatto per confermare</div>
-            <div className="bt1">Riordina esercizi</div>
-          </div>
-          <button className="pen" onClick={onClose}>✕</button>
-        </div>
-        <div ref={scroller} style={{ flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
-        <div className="reobox" ref={box} style={{ height: order.length * ROW }}>
-          {order.map((idx, pos) => {
-            const it = plan[idx]
-            const dragging = drag?.pos === pos
-            const VIS = ROW - 10 // 10px di aria tra un box e l'altro
-            const y = dragging ? drag!.rel - ROW / 2 : pos * ROW + 5
-            return (
-              <div key={idx} className={'reorow' + (dragging ? ' dragging' : '')}
-                style={{ transform: `translateY(${y}px)`, height: VIS }}>
-                <span className="exbar" style={{ background: mcolor(it.muscle) }} />
-                <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
-                <span className="draghandle" onPointerDown={(e) => down(e, pos)} onPointerMove={move}
-                  onPointerUp={up} onPointerCancel={up}>≡</span>
-              </div>
-            )
-          })}
-        </div>
-        </div>
-        <button onClick={() => onDone(order)}>Fatto</button>
-      </div>
-    </div>
-  )
-}
-
 type Draft = { kg: string; reps: string; rpe: string }
 
 // Calcolatore bilanciere: bilanciere + dischi per lato -> peso totale (2 lati).
@@ -1003,9 +922,9 @@ function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: numb
   )
 }
 
-function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }: {
+function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, timerActive }: {
   s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
-  workoutStart: number | null; setWorkoutStart: (v: number | null) => void
+  workoutStart: number | null; setWorkoutStart: (v: number | null) => void; timerActive: boolean
 }) {
   const plan = curItems(s)
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
@@ -1019,8 +938,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   const [statsEx, setStatsEx] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ it: PlanItem; isExtra: boolean; idx: number } | null>(null)
   const [swap, setSwap] = useState<{ ex: string; isExtra: boolean } | null>(null)
-  const [reorder, setReorder] = useState(false)
   const [restPick, setRestPick] = useState<{ ex: string; isExtra: boolean } | null>(null)
+  const [focus, setFocus] = useState<number | null>(null)     // vista focus: indice esercizio (null = overview)
+  const [order2, setOrder2] = useState<number[] | null>(null) // ordine live durante il drag in overview
+  const [dragPos, setDragPos] = useState<{ pos: number; rel: number } | null>(null)
 
   const addExtra = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -1047,7 +968,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   // Rimuove un esercizio durante l'allenamento. Gli extra spariscono e basta; per un esercizio della
   // scheda chiedo conferma (lo toglie da quel giorno della scheda). Le serie già segnate restano nello storico.
   const removeEsercizio = async (ex: string, isExtra: boolean) => {
-    setMenu(null)
+    setMenu(null); setFocus(null)
     if (isExtra) return removeExtra(ex)
     if (!(await confirmDlg('Rimuovere l\'esercizio?', ex + ' — sparisce da questo giorno della scheda.'))) return
     const d = structuredClone(s)
@@ -1069,7 +990,74 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
     const d = structuredClone(s)
     const day2 = d.schede[s.activeScheda].days[s.activeDay]
     day2.items = order.map((i) => day2.items[i])
-    setS(d); setReorder(false)
+    setS(d)
+  }
+
+  // --- Riordino direttamente in overview: tieni premuto una card e trascinala. Il rilascio conferma. ---
+  const OROW = 62
+  const obox = useRef<HTMLDivElement>(null)
+  const dr = useRef({ y: 0, startY: 0, pos: 0, order: [] as number[], raf: 0, active: false, moved: false, timer: null as ReturnType<typeof setTimeout> | null })
+  useEffect(() => { // iOS: blocca lo scroll pagina SOLO a drag attivo (listener non-passive)
+    const stop = (e: TouchEvent) => { if (dr.current.active) e.preventDefault() }
+    document.addEventListener('touchmove', stop, { passive: false })
+    return () => document.removeEventListener('touchmove', stop)
+  }, [])
+  const dragUpd = () => {
+    if (!obox.current) return
+    const rel = dr.current.y - obox.current.getBoundingClientRect().top // rect fresco: vale anche dopo lo scroll
+    const target = Math.max(0, Math.min(dr.current.order.length - 1, Math.floor(rel / OROW)))
+    if (target !== dr.current.pos) {
+      const n = [...dr.current.order]; const [m] = n.splice(dr.current.pos, 1); n.splice(target, 0, m)
+      dr.current.order = n; dr.current.pos = target
+      setOrder2(n)
+    }
+    setDragPos({ pos: target, rel })
+  }
+  const dragLoop = () => { // auto-scroll continuo della pagina ai bordi
+    const dy = dr.current.y < 150 ? -9 : dr.current.y > window.innerHeight - 170 ? 9 : 0
+    if (dy) { window.scrollBy(0, dy); dragUpd() }
+    dr.current.raf = requestAnimationFrame(dragLoop)
+  }
+  const stopTimer = () => { if (dr.current.timer) { clearTimeout(dr.current.timer); dr.current.timer = null } }
+  const cardDown = (e: React.PointerEvent, pos: number) => {
+    const el = e.currentTarget as HTMLElement, pid = e.pointerId
+    dr.current = { ...dr.current, y: e.clientY, startY: e.clientY, pos, order: plan.map((_, i) => i), active: false, moved: false }
+    stopTimer()
+    dr.current.timer = setTimeout(() => { // tenuto fermo: parte il drag
+      dr.current.active = true; dr.current.moved = true // moved: il click successivo non deve aprire il focus
+      el.setPointerCapture?.(pid)
+      navigator.vibrate?.(30)
+      setOrder2([...dr.current.order])
+      dr.current.raf = requestAnimationFrame(dragLoop)
+      dragUpd()
+    }, 260)
+  }
+  const cardMove = (e: React.PointerEvent) => {
+    dr.current.y = e.clientY
+    if (!dr.current.active) { // si muove prima del long-press: è uno scroll, annulla l'attesa
+      if (Math.abs(e.clientY - dr.current.startY) > 10) stopTimer()
+      return
+    }
+    dragUpd()
+  }
+  const cardUp = () => {
+    stopTimer()
+    if (!dr.current.active) return
+    dr.current.active = false
+    cancelAnimationFrame(dr.current.raf)
+    applyOrder(dr.current.order) // rilascio = conferma
+    setOrder2(null); setDragPos(null)
+  }
+  const cardCancel = () => { // gesto reclamato dal browser: annulla senza applicare
+    stopTimer()
+    if (!dr.current.active) return
+    dr.current.active = false
+    cancelAnimationFrame(dr.current.raf)
+    setOrder2(null); setDragPos(null)
+  }
+  const cardTap = (idx: number) => {
+    if (dr.current.moved) { dr.current.moved = false; return } // era un drag, non un tap
+    setFocus(idx)
   }
   const toggleSuperset = (it: PlanItem) => { patchItem(it.ex, false, (t) => { t.ss = !t.ss }); setMenu(null) }
   const doSwap = (name: string) => {
@@ -1238,92 +1226,166 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
 
   return (
     <>
-      <div className="wbar">
-        <div className="wbar-top">
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="crumb">{curScheda(s)?.name} · allenamento</div>
-            <div className="wbar-day">{day?.name}</div>
-          </div>
-          {workoutStart != null && <button onClick={abort} style={{ width: 'auto', padding: '8px 12px', marginRight: 8, background: 'transparent', color: 'var(--coral)', fontSize: 13 }}>Annulla</button>}
-          <button className="finito" onClick={finish}>Finito</button>
-        </div>
-        <div className="wstats">
-          <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</div></div>
-          <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
-          <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
-        </div>
-        <div className="bt" style={{ height: 5, marginTop: 10 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
-      </div>
-      <p className="hint num">✦ Pesi proposti dal coach · readiness <b>{r}</b> · ✓ conferma o correggi</p>
-
-      {items.map((it, idx) => {
+      {focus != null && items[focus] ? (() => {
+        // ---- VISTA FOCUS: un esercizio = una schermata (serie, storico, note, tool) ----
+        const idx = focus
+        const it = items[idx]
         const sps = specs(it)
         const done = Math.min(logOf(it.ex).length, sps.length)
         const exDone = done >= sps.length
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
         const ss = inSS(idx)
-        // Superset A→B→A→B stretto: A non può andare avanti di più di una serie su B,
-        // e B non può mai raggiungere/superare A. ssWait = chi devo aspettare.
-        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null // io sono A, lui è B
-        const ssPrev = idx > 0 && items[idx - 1]?.ss ? items[idx - 1] : null   // io sono B, lui è A
+        // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A
+        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null
+        const ssPrev = idx > 0 && items[idx - 1]?.ss ? items[idx - 1] : null
         const ssWait = ssNext && logOf(it.ex).length > logOf(ssNext.ex).length ? ssNext.ex
           : ssPrev && logOf(it.ex).length >= logOf(ssPrev.ex).length ? ssPrev.ex : null
+        // Storico: l'ultima seduta passata con questo esercizio, visibile mentre carichi
+        const prevDates = historyDates(s.log, it.ex).filter((d2) => d2 !== today())
+        const lastDate = prevDates[prevDates.length - 1]
+        const lastSets = lastDate ? s.log.filter((l) => l.date === lastDate && l.ex === it.ex) : []
         return (
-          <div className={'card excard' + (exDone ? ' completed' : '') + (ss ? ' ssgroup' : '')} key={it.ex}>
-            <div className="exhead">
-              <span className="exbar" style={{ background: ss ? 'var(--teal)' : mcolor(it.muscle) }} />
-              <div style={{ minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={() => setStatsEx(it.ex)}>
-                <b style={{ fontSize: 15.5 }}>{it.ex} <span style={{ color: 'var(--mut2)', fontSize: 13 }}>›</span></b>{tag && <span className="stag">{tag}</span>}{ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Superset</span>}{isExtra && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>}
-                <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span></div>
-                {it.note && <div className="note">✎ {it.note}</div>}
+          <>
+            <div className="bc">
+              <button className="back" onClick={() => setFocus(null)}>‹</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="crumb" style={{ color: mcolor(it.muscle) }}>{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}</div>
+                <div className="bt1">{it.ex}{tag && <span className="stag">{tag}</span>}</div>
               </div>
               <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
-              <span className="del gearbtn" onClick={() => setMenu({ it, isExtra, idx })} title="Opzioni esercizio"><Gear /></span>
-              {isExtra && done === 0 && <span className="del" onClick={() => removeExtra(it.ex)}>✕</span>}
+              <button className="pen" onClick={() => setMenu({ it, isExtra, idx })} title="Opzioni esercizio"><Gear size={17} /></button>
             </div>
-            <button className="restchip" onClick={() => setRestPick({ ex: it.ex, isExtra })}>
-              <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
-            </button>
-            {sps.map((sp, i) => {
-              if (i < done) {
-                const logged = logOf(it.ex)[i]
+
+            <div className="card" style={{ marginTop: 12, cursor: 'pointer' }} onClick={() => setStatsEx(it.ex)}>
+              <div className="mono sm mut" style={{ fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase' }}>Storico pesi{lastDate ? ' · ' + lastDate.split('-').reverse().join('/') : ''} ›</div>
+              {lastSets.length
+                ? <div className="num" style={{ marginTop: 7, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${fmt(l.kg)}×${l.reps}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
+                : <p className="sm mut" style={{ margin: '7px 0 0' }}>Prima volta con questo esercizio: parti prudente e segna tutto.</p>}
+            </div>
+
+            {it.note && <div className="note" style={{ margin: '10px 4px 0' }}>✎ {it.note}</div>}
+
+            <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
+              <button className="restchip" onClick={() => setRestPick({ ex: it.ex, isExtra })}>
+                <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
+              </button>
+              {sps.map((sp, i) => {
+                if (i < done) {
+                  const logged = logOf(it.ex)[i]
+                  return (
+                    <div className="wrow done" key={i}>
+                      <span className="sidx ok">✓</span>
+                      <b className="num" style={{ fontSize: 14 }}>{fmt(logged.kg)} kg × {logged.reps}</b>
+                      {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)}</span>}
+                      <span className="del" style={{ marginLeft: 'auto' }} onClick={() => uncheck(it.ex, i)}>✕</span>
+                    </div>
+                  )
+                }
+                const active = i === done
+                const d = getDraft(it, sp, i)
                 return (
-                  <div className="wrow done" key={i}>
-                    <span className="sidx ok">✓</span>
-                    <b className="num" style={{ fontSize: 14 }}>{fmt(logged.kg)} kg × {logged.reps}</b>
-                    {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)}</span>}
-                    <span className="del" style={{ marginLeft: 'auto' }} onClick={() => uncheck(it.ex, i)}>✕</span>
+                  <div className={'wrow st-' + sp.type + (active ? ' active' : ' pending')} key={i}>
+                    <span className="sidx">{i + 1}</span>
+                    <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
+                    <span className="x">×</span>
+                    <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
+                    <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
+                      <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                    <button className="chk" disabled={!active || !!ssWait} onClick={() => check(it, sp, i)}>✓</button>
+                    {(sp.type !== 'normal' || sp.load) && (
+                      <div className="wsub">{setTypeLabel(sp.type)}{sp.load ? ` · ${sp.load}` : ''}</div>
+                    )}
+                    {active && ssWait && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssWait}</div>}
                   </div>
                 )
-              }
-              const active = i === done
-              const d = getDraft(it, sp, i)
+              })}
+              <div className="setbtns" style={{ marginTop: 8 }}>
+                {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
+                <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
+                <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
+              </div>
+            </div>
+
+            <div style={{ height: 78 }} />{/* aria per la barra sticky */}
+            <div className={'focusbar' + (timerActive ? ' up' : '')}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="mono sm mut" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase' }}>Durata</div>
+                <b className="num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</b>
+              </div>
+              <button className="fbtn" disabled={idx === 0} onClick={() => setFocus(idx - 1)}>‹</button>
+              <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{idx + 1}/{items.length}</span>
+              <button className="fbtn" disabled={idx >= items.length - 1} onClick={() => setFocus(idx + 1)}>›</button>
+            </div>
+          </>
+        )
+      })() : (
+        <>
+          <div className="wbar">
+            <div className="wbar-top">
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="crumb">{curScheda(s)?.name} · allenamento</div>
+                <div className="wbar-day">{day?.name}</div>
+              </div>
+              {workoutStart != null && <button onClick={abort} style={{ width: 'auto', padding: '8px 12px', marginRight: 8, background: 'transparent', color: 'var(--coral)', fontSize: 13 }}>Annulla</button>}
+              <button className="finito" onClick={finish}>Finito</button>
+            </div>
+            <div className="wstats">
+              <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</div></div>
+              <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
+              <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
+            </div>
+            <div className="bt" style={{ height: 5, marginTop: 10 }}><i style={{ width: pct + '%', background: 'var(--lime)' }} /></div>
+          </div>
+          <p className="hint">Tocca un esercizio per allenarti · tieni premuto e trascina per riordinare · readiness <b className="num">{r}</b></p>
+
+          <div className="reobox" ref={obox} style={{ height: plan.length * OROW }}>
+            {(order2 ?? plan.map((_, i) => i)).map((planIdx, pos) => {
+              const it = plan[planIdx]
+              const sps = specs(it)
+              const done = Math.min(logOf(it.ex).length, sps.length)
+              const exDone = done >= sps.length
+              const dragging = order2 != null && dragPos?.pos === pos
+              const y = dragging ? dragPos!.rel - OROW / 2 : pos * OROW + 4
+              const inPair = it.ss || (planIdx > 0 && plan[planIdx - 1]?.ss)
               return (
-                <div className={'wrow st-' + sp.type + (active ? ' active' : ' pending')} key={i}>
-                  <span className="sidx">{i + 1}</span>
-                  <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
-                  <span className="x">×</span>
-                  <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
-                  <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
-                    <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
-                  </select>
-                  <button className="chk" disabled={!active || !!ssWait} onClick={() => check(it, sp, i)}>✓</button>
-                  {(sp.type !== 'normal' || sp.load) && (
-                    <div className="wsub">{setTypeLabel(sp.type)}{sp.load ? ` · ${sp.load}` : ''}</div>
-                  )}
-                  {active && ssWait && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssWait}</div>}
+                <div key={it.ex} className={'ocard' + (dragging ? ' dragging' : '') + (exDone ? ' done2' : '')}
+                  style={{ transform: `translateY(${y}px)`, height: OROW - 8 }}
+                  onPointerDown={(e) => cardDown(e, pos)} onPointerMove={cardMove}
+                  onPointerUp={cardUp} onPointerCancel={cardCancel} onClick={() => cardTap(planIdx)}>
+                  <span className="exbar" style={{ background: inPair ? 'var(--teal)' : mcolor(it.muscle) }} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <b style={{ fontSize: 14.5 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
+                    <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)}{it.note ? ' · ✎' : ''}</div>
+                  </div>
+                  <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+                  <span className="chev">›</span>
                 </div>
               )
             })}
-            <div className="setbtns" style={{ marginTop: 8 }}>
-              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
-              <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
-              <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
-            </div>
           </div>
-        )
-      })}
+          {extras.map((it, j) => {
+            const idx = plan.length + j
+            const sps = specs(it)
+            const done = Math.min(logOf(it.ex).length, sps.length)
+            const exDone = done >= sps.length
+            return (
+              <div key={it.ex} className={'ocard flow' + (exDone ? ' done2' : '')} onClick={() => setFocus(idx)}>
+                <span className="exbar" style={{ background: mcolor(it.muscle) }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <b style={{ fontSize: 14.5 }}>{it.ex}</b><span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Extra</span>
+                  <div className="meta num"><span style={{ color: mcolor(it.muscle) }}>{it.muscle}</span> · {schemeSummary(it)}</div>
+                </div>
+                <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+                {done === 0 && <span className="del" onClick={(e) => { e.stopPropagation(); removeExtra(it.ex) }}>✕</span>}
+                <span className="chev">›</span>
+              </div>
+            )
+          })}
+          <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
+        </>
+      )}
 
       {barCalc && <BarCalc target={barCalc.target} onUse={(kg) => { setD(barCalc.it, barCalc.sp, barCalc.i, { kg: String(kg) }); setBarCalc(null) }} onClose={() => setBarCalc(null)} />}
       {menu && (
@@ -1341,11 +1403,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
               <button className="menurow" onClick={() => { setSwap({ ex: menu.it.ex, isExtra: menu.isExtra }); setMenu(null) }}>
                 <span className="mi"><MenuIcon t="swap" /></span>Sostituisci esercizio
               </button>
-              {!menu.isExtra && plan.length > 1 && (
-                <button className="menurow" onClick={() => { setReorder(true); setMenu(null) }}>
-                  <span className="mi"><MenuIcon t="reorder" /></span>Riordina esercizi
-                </button>
-              )}
               {!menu.isExtra && menu.idx < plan.length - 1 && (
                 <button className={'menurow' + (menu.it.ss ? ' on' : '')} onClick={() => toggleSuperset(menu.it)}>
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
@@ -1375,9 +1432,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         return <RestPicker value={it.rest} onClose={() => setRestPick(null)}
           onChange={(v) => patchItem(restPick.ex, restPick.isExtra, (t) => { t.rest = v })} />
       })()}
-      {reorder && <ReorderSheet plan={plan} onDone={applyOrder} onClose={() => setReorder(false)} />}
-
-      <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
       {picker && (
         <ExPicker lib={lib} title="Alla seduta di oggi" onClose={() => setPicker(false)}
           onPick={addExtra} onCreate={createAndAddExtra} />
