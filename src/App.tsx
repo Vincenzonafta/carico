@@ -928,8 +928,9 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
 
 type Draft = { kg: string; reps: string; rpe: string }
 
-// Calcolatore bilanciere: bilanciere + dischi per lato -> peso totale (2 lati)
-function BarCalc({ onUse, onClose }: { onUse: (kg: number) => void; onClose: () => void }) {
+// Calcolatore bilanciere: bilanciere + dischi per lato -> peso totale (2 lati).
+// target = il peso della serie (proposta del coach): mostra quanto caricare per lato.
+function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: number) => void; onClose: () => void }) {
   const [bar, setBar] = useState(20)
   const [plates, setPlates] = useState<number[]>([])
   const PLATES = [1.25, 2.5, 5, 10, 15, 20, 25]
@@ -944,6 +945,12 @@ function BarCalc({ onUse, onClose }: { onUse: (kg: number) => void; onClose: () 
             {[20, 15, 10, 0].map((b) => <button key={b} className={'chip' + (bar === b ? ' on' : '')} onClick={() => setBar(b)}>{b}</button>)}
           </div>
         </div>
+        {target != null && target > bar && (
+          <div className="mrow" style={{ marginTop: 10 }}>
+            <span className="sm mut">Consigliato: {fmt(target)} kg</span>
+            <b className="num" style={{ color: 'var(--teal)' }}>{fmt((target - bar) / 2)} kg per lato</b>
+          </div>
+        )}
         <p className="sm mut" style={{ margin: '14px 0 6px' }}>Dischi per lato — tocca per aggiungere</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {PLATES.map((p) => <button key={p} className="chip" onClick={() => setPlates([...plates, p])}>{fmt(p)}</button>)}
@@ -973,7 +980,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
   const day = curDay(s)
   const lib = [...EXERCISES, ...s.customExercises]
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload } | null>(null)
-  const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
+  const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1223,8 +1230,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
         const ss = inSS(idx)
-        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null // 2° esercizio del superset
-        const ssBlock = !!ssNext && logOf(it.ex).length > logOf(ssNext.ex).length // 1° più avanti del 2°: blocca
+        // Superset A→B→A→B stretto: A non può andare avanti di più di una serie su B,
+        // e B non può mai raggiungere/superare A. ssWait = chi devo aspettare.
+        const ssNext = it.ss && idx + 1 < items.length ? items[idx + 1] : null // io sono A, lui è B
+        const ssPrev = idx > 0 && items[idx - 1]?.ss ? items[idx - 1] : null   // io sono B, lui è A
+        const ssWait = ssNext && logOf(it.ex).length > logOf(ssNext.ex).length ? ssNext.ex
+          : ssPrev && logOf(it.ex).length >= logOf(ssPrev.ex).length ? ssPrev.ex : null
         return (
           <div className={'card excard' + (exDone ? ' completed' : '') + (ss ? ' ssgroup' : '')} key={it.ex}>
             <div className="exhead">
@@ -1264,16 +1275,16 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
                   <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
                     <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
                   </select>
-                  <button className="chk" disabled={!active || ssBlock} onClick={() => check(it, sp, i)}>✓</button>
+                  <button className="chk" disabled={!active || !!ssWait} onClick={() => check(it, sp, i)}>✓</button>
                   {(sp.type !== 'normal' || sp.load) && (
                     <div className="wsub">{setTypeLabel(sp.type)}{sp.load ? ` · ${sp.load}` : ''}</div>
                   )}
-                  {active && ssBlock && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssNext!.ex}</div>}
+                  {active && ssWait && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssWait}</div>}
                 </div>
               )
             })}
             <div className="setbtns" style={{ marginTop: 8 }}>
-              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
+              {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
               <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
               <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
             </div>
@@ -1281,7 +1292,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         )
       })}
 
-      {barCalc && <BarCalc onUse={(kg) => { setD(barCalc.it, barCalc.sp, barCalc.i, { kg: String(kg) }); setBarCalc(null) }} onClose={() => setBarCalc(null)} />}
+      {barCalc && <BarCalc target={barCalc.target} onUse={(kg) => { setD(barCalc.it, barCalc.sp, barCalc.i, { kg: String(kg) }); setBarCalc(null) }} onClose={() => setBarCalc(null)} />}
       {menu && (
         <div className="overlay" onClick={() => setMenu(null)}>
           <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
