@@ -878,43 +878,64 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
   )
 }
 
-// Riordino a trascinamento: tieni ≡ e sposta su/giù, gli altri scorrono
-function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: number[]) => void }) {
+// Riordino a trascinamento: tieni ≡ e sposta, con auto-scroll ai bordi.
+// Il puntatore va catturato sulla MANIGLIA (touch-action:none), non sul contenitore:
+// altrimenti iOS reclama il gesto per lo scroll (pan-y) e uccide il drag con pointercancel.
+// Lo spostamento si applica SOLO con "Fatto": ✕ e tocco fuori annullano.
+function ReorderSheet({ plan, onDone, onClose }: { plan: PlanItem[]; onDone: (order: number[]) => void; onClose: () => void }) {
   const ROW = 60
   const [order, setOrder] = useState<number[]>(() => plan.map((_, i) => i))
-  const [drag, setDrag] = useState<{ pos: number; rel: number; top: number } | null>(null)
+  const [drag, setDrag] = useState<{ pos: number; rel: number } | null>(null)
   const box = useRef<HTMLDivElement>(null)
-  const done = () => onDone(order)
+  const scroller = useRef<HTMLDivElement>(null)
+  const live = useRef<{ y: number; pos: number; order: number[]; raf: number }>({ y: 0, pos: 0, order: [], raf: 0 })
 
-  const down = (e: React.PointerEvent, pos: number) => {
-    const top = box.current!.getBoundingClientRect().top
-    try { box.current!.setPointerCapture(e.pointerId) } catch { /* puntatore non catturabile */ }
-    setDrag({ pos, rel: e.clientY - top, top })
-  }
-  const move = (e: React.PointerEvent) => {
-    if (!drag) return
-    const rel = e.clientY - drag.top
-    const target = Math.max(0, Math.min(order.length - 1, Math.floor(rel / ROW)))
-    if (target !== drag.pos) {
-      const n = [...order]; const [m] = n.splice(drag.pos, 1); n.splice(target, 0, m)
+  // Unico punto che ricalcola posizione e ordine dalla Y del dito (usato da pointermove e dal loop di auto-scroll)
+  const updateFromY = () => {
+    if (!box.current) return
+    const rel = live.current.y - box.current.getBoundingClientRect().top // rect fresco: tiene conto dello scroll
+    const target = Math.max(0, Math.min(live.current.order.length - 1, Math.floor(rel / ROW)))
+    if (target !== live.current.pos) {
+      const n = [...live.current.order]; const [m] = n.splice(live.current.pos, 1); n.splice(target, 0, m)
+      live.current.order = n; live.current.pos = target
       setOrder(n)
     }
-    setDrag({ ...drag, pos: target, rel })
+    setDrag({ pos: target, rel })
   }
+  const loop = () => { // auto-scroll continuo finché il dito resta vicino al bordo
+    const sc = scroller.current
+    if (sc) {
+      const r = sc.getBoundingClientRect()
+      const dy = live.current.y < r.top + 56 ? -9 : live.current.y > r.bottom - 56 ? 9 : 0
+      if (dy) { sc.scrollTop += dy; updateFromY() }
+    }
+    live.current.raf = requestAnimationFrame(loop)
+  }
+  const down = (e: React.PointerEvent, pos: number) => {
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    live.current = { y: e.clientY, pos, order, raf: requestAnimationFrame(loop) }
+    updateFromY()
+  }
+  const move = (e: React.PointerEvent) => {
+    if (!live.current.raf) return // il ref è la verità: lo stato React arriva un render dopo
+    live.current.y = e.clientY
+    updateFromY()
+  }
+  const up = () => { cancelAnimationFrame(live.current.raf); live.current.raf = 0; setDrag(null) }
+  useEffect(() => () => cancelAnimationFrame(live.current.raf), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="overlay" onClick={done}>
+    <div className="overlay" onClick={onClose}>
       <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>
         <div className="bc" style={{ margin: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="crumb">Tieni ≡ e trascina</div>
+            <div className="crumb">Tieni ≡ e trascina · Fatto per confermare</div>
             <div className="bt1">Riordina esercizi</div>
           </div>
-          <button className="pen" onClick={done}>✕</button>
+          <button className="pen" onClick={onClose}>✕</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
-        <div className="reobox" ref={box} style={{ height: order.length * ROW }}
-          onPointerMove={move} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
+        <div ref={scroller} style={{ flex: 1, overflowY: 'auto', minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+        <div className="reobox" ref={box} style={{ height: order.length * ROW }}>
           {order.map((idx, pos) => {
             const it = plan[idx]
             const dragging = drag?.pos === pos
@@ -925,13 +946,14 @@ function ReorderSheet({ plan, onDone }: { plan: PlanItem[]; onDone: (order: numb
                 style={{ transform: `translateY(${y}px)`, height: VIS }}>
                 <span className="exbar" style={{ background: mcolor(it.muscle) }} />
                 <b style={{ flex: 1, minWidth: 0, fontSize: 15 }}>{it.ex}</b>
-                <span className="draghandle" onPointerDown={(e) => down(e, pos)}>≡</span>
+                <span className="draghandle" onPointerDown={(e) => down(e, pos)} onPointerMove={move}
+                  onPointerUp={up} onPointerCancel={up}>≡</span>
               </div>
             )
           })}
         </div>
         </div>
-        <button onClick={done}>Fatto</button>
+        <button onClick={() => onDone(order)}>Fatto</button>
       </div>
     </div>
   )
@@ -1353,7 +1375,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart }:
         return <RestPicker value={it.rest} onClose={() => setRestPick(null)}
           onChange={(v) => patchItem(restPick.ex, restPick.isExtra, (t) => { t.rest = v })} />
       })()}
-      {reorder && <ReorderSheet plan={plan} onDone={applyOrder} />}
+      {reorder && <ReorderSheet plan={plan} onDone={applyOrder} onClose={() => setReorder(false)} />}
 
       <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
       {picker && (
