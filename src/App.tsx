@@ -1318,9 +1318,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <div className="mono sm mut" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase' }}>Durata</div>
                 <b className="num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</b>
               </div>
+              {workoutStart != null && <button className="fbtn" style={{ color: 'var(--coral)', fontSize: 15 }} title="Annulla allenamento"
+                onClick={async () => { await abort(); setFocus(null) }}>✕</button>}
               <button className="fbtn" disabled={idx === 0} onClick={() => setFocus(idx - 1)}>‹</button>
               <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{idx + 1}/{items.length}</span>
-              <button className="fbtn" disabled={idx >= items.length - 1} onClick={() => setFocus(idx + 1)}>›</button>
+              {idx >= items.length - 1
+                ? <button className="fbtn fine" title="Allenamento finito" onClick={() => { setFocus(null); finish() }}>✓</button>
+                : <button className="fbtn" onClick={() => setFocus(idx + 1)}>›</button>}
             </div>
           </>
         )

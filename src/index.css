@@ -368,6 +368,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .focusbar .fbtn { width:48px; flex:none; padding:9px 0; font-size:20px; line-height:1;
   background:var(--surf); color:var(--chalk); border:1px solid var(--hair); border-radius:12px; }
 .focusbar .fbtn:disabled { opacity:.3; }
+.focusbar .fbtn.fine { background:var(--lime); color:var(--lime-ink); border-color:var(--lime); font-weight:800; }
 body:has(input:focus:not([type=range]), textarea:focus) .focusbar { display:none; }
 
 .reorow { position:absolute; left:0; right:0; display:flex; align-items:center; gap:11px; padding:0 4px;
