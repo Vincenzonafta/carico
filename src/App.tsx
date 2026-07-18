@@ -1298,27 +1298,46 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           <>
             <div className="bc">
               <button className="back" onClick={() => setFocus(null)}>‹</button>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="crumb">{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}</div>
-                <div className="bt1">{it.ex}{tag && <span className="stag">{tag}</span>}</div>
-              </div>
-              <span className={'exprog num' + (exDone ? ' ok' : '')}>{done}/{sps.length}</span>
+              <div style={{ flex: 1 }} />
+              <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
               <button className="pen" onClick={() => setMenu({ it, isExtra, idx })} title="Opzioni esercizio"><Gear size={17} /></button>
             </div>
 
-            <div className="card" style={{ marginTop: 12, cursor: 'pointer' }} onClick={() => setStatsEx(it.ex)}>
-              <div className="mono sm mut" style={{ fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase' }}>Storico pesi{lastDate ? ' · ' + lastDate.split('-').reverse().join('/') : ''} ›</div>
-              {lastSets.length
-                ? <div className="num" style={{ marginTop: 7, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${fmt(l.kg)}×${l.reps}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
-                : <p className="sm mut" style={{ margin: '7px 0 0' }}>Prima volta con questo esercizio: parti prudente e segna tutto.</p>}
+            <div className="fhero">{/* qui vivrà il video di esecuzione */}
+              <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
+              <span className="sm">Video esecuzione · in arrivo</span>
+            </div>
+            <div className="ftitle">{it.ex}</div>
+            <div className="crumb" style={{ margin: '4px 2px 0' }}>{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}</div>
+
+            <div className="card fstats">
+              <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>
+              <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span><b className="num">{itemReps(it)}</b><span className="l">Ripetizioni</span></div>
+              <div><span className="fsico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" /></svg></span><b className="num">{mmss(it.rest)}</b><span className="l">Recupero</span></div>
             </div>
 
-            {it.note && <div className="note" style={{ margin: '10px 4px 0' }}>✎ {it.note}</div>}
+            <div className="card" style={{ marginTop: 12, cursor: 'pointer' }} onClick={() => setStatsEx(it.ex)}>
+              <div className="cardh"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg><b>Storico pesi</b><span className="chev" style={{ marginLeft: 'auto' }}>›</span></div>
+              <div className="cardh-div" />
+              {lastSets.length
+                ? <>
+                    <div className="sm mut">Ultima volta · {lastDate!.split('-').reverse().join('/')}</div>
+                    <div className="num" style={{ marginTop: 5, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${fmt(l.kg)}×${l.reps}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
+                  </>
+                : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
+            </div>
+
+            {it.note && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="cardh"><b>Note</b></div>
+                <div className="cardh-div" />
+                <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5 }}>{it.note}</p>
+              </div>
+            )}
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
-              <button className="restchip" onClick={() => setRestPick({ ex: it.ex, isExtra })}>
-                <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
-              </button>
+              <div className="cardh"><b>Serie</b></div>
+              <div className="serhead"><span /><span>Peso (kg)</span><span /><span>Reps</span><span>RPE</span><span /></div>
               {sps.map((sp, i) => {
                 if (i < done) {
                   const logged = logOf(it.ex)[i]
@@ -1350,10 +1369,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   </div>
                 )
               })}
-              <div className="setbtns" style={{ marginTop: 8 }}>
-                {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
-                <button className="addset" style={{ marginTop: 0 }} onClick={() => addSetRt(it, isExtra)}>＋ Aggiungi serie</button>
-                <button className="addset rm" style={{ marginTop: 0 }} onClick={() => removeSetRt(it, isExtra)}>− Rimuovi</button>
+              <div className="setbtns" style={{ marginTop: 12 }}>
+                <button className="restchip" style={{ flex: 1, margin: 0, justifyContent: 'center' }} onClick={() => setRestPick({ ex: it.ex, isExtra })}>
+                  <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
+                </button>
+                {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
+                <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => addSetRt(it, isExtra)}>＋ Serie</button>
+                <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>
             </div>
 
