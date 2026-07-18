@@ -72,6 +72,11 @@ const Clock = () => (
     <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" />
   </svg>
 )
+const Dumb = () => (
+  <svg viewBox="0 0 24 24" className="misvg" style={{ width: 14, height: 14 }}>
+    <path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" />
+  </svg>
+)
 
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
@@ -640,18 +645,17 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       <h2>Le tue schede</h2>
       {s.schede.map((x, i) => {
         const nEx = x.days.reduce((a, dd) => a + dd.items.length, 0)
-        const mus = [...new Set(x.days.flatMap((dd) => dd.items.map((it) => it.muscle)))]
         return (
-          <div className="navcard" key={i} onClick={() => {
+          <div className="bigcard" key={i} onClick={() => {
             if (workoutActive) { if (i !== s.activeScheda) return guardWorkout(); setView('scheda'); return }
             setS({ ...s, activeScheda: i, activeDay: 0 }); setView('scheda')
           }}>
-            <div style={{ minWidth: 0 }}>
-              <b>{x.name}</b>{i === s.activeScheda && <span className="stag">Attiva</span>}
-              <div className="meta num">{x.days.length} {x.days.length === 1 ? 'giorno' : 'giorni'} · {nEx} esercizi</div>
-              <div className="mdots">{mus.map((m) => <span className="mdot" key={m} style={{ background: mcolor(m) }} />)}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {i === s.activeScheda && <span className="stag" style={{ margin: '0 0 7px', display: 'inline-block' }}>Attiva</span>}
+              <b className="bc-title">{x.name}</b>
+              <div className="meta num" style={{ marginTop: 5 }}><Dumb /> {x.days.length} {x.days.length === 1 ? 'giorno' : 'giorni'} · {nEx} esercizi</div>
             </div>
-            <span className="chev">›</span>
+            <span className="bc-go">›</span>
           </div>
         )
       })}
@@ -690,16 +694,17 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
         const mus = [...new Set(dd.items.map((it) => it.muscle))]
         const min = Math.round(dd.items.reduce((a, it) => a + itemSetCount(it) * (it.rest + 45), 0) / 60)
         return (
-          <div className="navcard" key={i} onClick={() => {
+          <div className="bigcard" key={i} onClick={() => {
             if (workoutActive) { if (i !== s.activeDay) return guardWorkout(); setEdit(null); setView('day'); return }
             setS({ ...s, activeDay: i }); setEdit(null); setView('day')
           }}>
-            <div style={{ minWidth: 0 }}>
-              <b>{dd.name}</b>
-              <div className="meta num">{dd.items.length} esercizi{min > 0 && <> · ~{min} min</>}</div>
-              <div className="mdots">{mus.map((m) => <span className="mdot" key={m} style={{ background: mcolor(m) }} />)}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span className="stag" style={{ margin: 0, display: 'inline-block' }}>Giorno {i + 1}</span>
+              <b className="bc-title" style={{ display: 'block', marginTop: 7 }}>{dd.name}</b>
+              <div className="meta num" style={{ marginTop: 5 }}><Dumb /> {dd.items.length} esercizi{min > 0 && <> · <Clock /> ~{min} min</>}</div>
+              {mus.length > 0 && <div className="meta" style={{ marginTop: 4 }}>{mus.join(' · ')}</div>}
             </div>
-            <span className="chev">›</span>
+            <span className="bc-go">›</span>
           </div>
         )
       })}
@@ -1327,13 +1332,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>
 
-            {it.note && (
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="cardh"><b>Note</b></div>
-                <div className="cardh-div" />
-                <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5 }}>{it.note}</p>
-              </div>
-            )}
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="cardh"><b>Note sull'esercizio</b></div>
+              <div className="cardh-div" />
+              <textarea key={it.ex} className="notebox" rows={2} defaultValue={it.note ?? ''}
+                placeholder="es. fastidio spalla, presa più larga…"
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== (it.note ?? '')) patchItem(it.ex, isExtra, (t) => { t.note = v || undefined }) }} />
+            </div>
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
               <div className="cardh"><b>Serie</b></div>
@@ -1479,13 +1484,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
                 </button>
               )}
-              <button className="menurow" onClick={async () => {
-                setMenu(null)
-                const v = await promptDlg('Nota esercizio', [{ label: 'Nota', value: menu.it.note ?? '', placeholder: 'es. fastidio spalla, presa più larga…' }])
-                if (v) patchItem(menu.it.ex, menu.isExtra, (t) => { t.note = v[0].trim() || undefined })
-              }}>
-                <span className="mi">✎</span>Nota esercizio
-              </button>
               <button className="menurow" style={{ color: 'var(--coral)' }} onClick={() => removeEsercizio(menu.it.ex, menu.isExtra)}>
                 <span className="mi">✕</span>Rimuovi esercizio
               </button>
