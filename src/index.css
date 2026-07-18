@@ -1,4 +1,4 @@
-/* ============ tokens — contrasto alto ============ */
+﻿/* ============ tokens — contrasto alto ============ */
 :root {
   --bg:#0B0E13; --surf:#191F29; --surf2:#242E3B; --hair:#33404F;
   --chalk:#F3F6FA; --mut:#9DAABD; --mut2:#6F7C8E;
@@ -76,7 +76,7 @@ button:disabled { opacity:.35; }
 .sl { margin:14px 0; }
 .sl .top { display:flex; justify-content:space-between; margin-bottom:6px; font-size:15px; }
 .sl .top b { font-weight:600; }
-.sl .val { font-family:var(--mono); font-size:13.5px; font-weight:700; color:var(--teal); }
+.sl .val { font-family:var(--mono); font-size:13.5px; font-weight:700; color:var(--lime); }
 
 /* ============ piano di oggi ============ */
 .plan { padding:2px 12px; }
@@ -100,7 +100,7 @@ button:disabled { opacity:.35; }
   font-family:var(--mono); font-size:11.5px; display:flex; align-items:center; justify-content:center; flex:none; }
 .set .r { margin-left:auto; }
 .r { font-family:var(--mono); font-size:11.5px; font-weight:700; padding:4px 8px; border-radius:8px; }
-.r-ok { color:var(--teal); background:rgba(49,224,180,.14); }
+.r-ok { color:var(--lime); background:rgba(201,249,78,.14); }
 .r-hi { color:var(--amber); background:rgba(245,184,74,.14); }
 
 /* ============ coach ============ */
@@ -129,21 +129,21 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* ============ timer + crono ============ */
 .timer { display:block; margin-top:10px; padding:10px 14px;
-  background:rgba(49,224,180,.1); border-color:rgba(49,224,180,.35); }
-.timer .tl { color:var(--teal); }
+  background:rgba(201,249,78,.1); border-color:rgba(201,249,78,.35); }
+.timer .tl { color:var(--lime); }
 
 /* popup flottante: fisso sopra la nav, visibile in ogni schermata */
 .timerbar { position:fixed; left:50%; transform:translateX(-50%); width:calc(100% - 18px); max-width:412px;
   bottom:calc(76px + env(safe-area-inset-bottom)); z-index:40; margin:0;
-  background:rgba(10,20,18,.97); border:1px solid rgba(49,224,180,.4); border-radius:16px;
+  background:rgba(10,20,18,.97); border:1px solid rgba(201,249,78,.35); border-radius:16px;
   padding:7px 13px; backdrop-filter:blur(10px); box-shadow:0 10px 34px rgba(0,0,0,.55); }
 #app.pad-timer { padding-bottom:calc(172px + env(safe-area-inset-bottom)); }
 .trow { display:flex; align-items:center; gap:10px; padding:4px 0; }
-.trow.bordered { border-top:1px solid rgba(49,224,180,.22); margin-top:8px; padding-top:12px; }
+.trow.bordered { border-top:1px solid rgba(201,249,78,.22); margin-top:8px; padding-top:12px; }
 .trow .tv { font-size:30px; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; line-height:1; }
 .trow.small .tv { font-size:21px; }
 .tbtn { flex:none; width:auto; padding:11px 13px; border-radius:11px; font-family:var(--mono);
-  font-size:15px; font-weight:700; background:rgba(49,224,180,.16); color:var(--teal); border:0; min-width:48px; }
+  font-size:15px; font-weight:700; background:rgba(201,249,78,.16); color:var(--lime); border:0; min-width:48px; }
 .tbar { height:7px; flex:1; }
 
 /* ============ allenamento in corso ============ */
@@ -166,7 +166,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .wsub { grid-column:2 / -1; margin-top:-2px; letter-spacing:.08em; }
 .wrow.done { display:flex; gap:11px; align-items:center; padding:9px 0; }
 .hint { font-family:var(--mono); font-size:12.5px; color:var(--mut); margin:10px 2px 2px; }
-.hint b { color:var(--teal); font-weight:700; }
+.hint b { color:var(--lime); font-weight:700; }
 
 .done { margin-top:10px; }
 .donecirc { width:68px; height:68px; margin:6px auto 12px; border-radius:50%;
@@ -187,11 +187,11 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .bar .bv { flex:none; width:100px; text-align:right; font-family:var(--mono); font-size:12px; color:var(--chalk); }
 .del { margin-left:10px; color:var(--mut2); cursor:pointer; font-size:17px; flex:none; padding:4px; }
 
-.delta { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--teal); background:rgba(49,224,180,.14); border-radius:9px; padding:5px 9px; }
+.delta { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--lime); background:rgba(201,249,78,.14); border-radius:9px; padding:5px 9px; }
 .verdict { border-radius:15px; padding:14px; }
 .verdict.warn { background:rgba(245,184,74,.1); border:1px solid rgba(245,184,74,.35); }
-.verdict.ok { background:rgba(49,224,180,.1); border:1px solid rgba(49,224,180,.32); }
-.verdict.warn .vt { color:var(--amber); } .verdict.ok .vt { color:var(--teal); }
+.verdict.ok { background:rgba(201,249,78,.1); border:1px solid rgba(201,249,78,.32); }
+.verdict.warn .vt { color:var(--amber); } .verdict.ok .vt { color:var(--lime); }
 .verdict .vh { font-size:18px; font-weight:800; margin-top:6px; }
 .verdict .vd { font-size:14px; color:var(--chalk); opacity:.88; margin-top:6px; line-height:1.5; }
 .mrow { display:flex; align-items:center; justify-content:space-between; padding:11px 2px; border-bottom:1px solid var(--hair); font-size:15.5px; }
@@ -315,26 +315,26 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* chip recupero cliccabile sotto ogni esercizio */
 .restchip { width:auto; margin:2px 0 10px; padding:9px 16px; font-size:13.5px; font-weight:700; font-family:var(--sans);
-  background:rgba(49,224,180,.1); color:var(--teal); border:1px solid rgba(49,224,180,.3); border-radius:999px;
+  background:rgba(201,249,78,.1); color:var(--lime); border:1px solid rgba(201,249,78,.3); border-radius:999px;
   display:inline-flex; align-items:center; gap:8px; }
 .restchip .ic { font-size:14px; }
-.restchip b { color:var(--teal); }
+.restchip b { color:var(--lime); }
 
 /* superset: gruppo legato all'esercizio successivo */
-.excard.ssgroup { border-color:rgba(49,224,180,.4); }
+.excard.ssgroup { border-color:rgba(201,249,78,.4); }
 
 /* rotella recupero */
 .restsheet { height:auto; max-height:80%; }
 .wheelbox { position:relative; }
 .wheelband { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:46px;
-  border-top:1px solid rgba(49,224,180,.4); border-bottom:1px solid rgba(49,224,180,.4);
-  background:rgba(49,224,180,.06); border-radius:10px; pointer-events:none; }
+  border-top:1px solid rgba(201,249,78,.4); border-bottom:1px solid rgba(201,249,78,.4);
+  background:rgba(201,249,78,.06); border-radius:10px; pointer-events:none; }
 .wheel { height:230px; overflow-y:auto; scroll-snap-type:y mandatory; scrollbar-width:none; }
 .wheel::-webkit-scrollbar { display:none; }
 .wheelpad { height:92px; }
 .wheeli { height:46px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center;
   font-size:20px; color:var(--mut2); font-weight:700; transition:color .1s, transform .1s; }
-.wheeli.on { color:var(--teal); font-size:26px; transform:scale(1.05); }
+.wheeli.on { color:var(--lime); font-size:26px; transform:scale(1.05); }
 
 /* menu opzioni esercizio (bottom sheet con icone in stile app) */
 .menusheet { height:auto; max-height:86%; }
@@ -345,8 +345,8 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   font-weight:600; font-size:15.5px; font-family:var(--sans); }
 .menurow .mi { width:38px; height:38px; flex:none; border-radius:11px; background:var(--surf2); color:var(--mut);
   display:flex; align-items:center; justify-content:center; }
-.menurow.on { border-color:rgba(49,224,180,.45); background:rgba(49,224,180,.09); color:var(--teal); }
-.menurow.on .mi { background:rgba(49,224,180,.18); color:var(--teal); }
+.menurow.on { border-color:rgba(201,249,78,.45); background:rgba(201,249,78,.09); color:var(--lime); }
+.menurow.on .mi { background:rgba(201,249,78,.18); color:var(--lime); }
 
 /* riordino a trascinamento */
 .reobox { position:relative; touch-action:pan-y; margin:6px 0; }
@@ -372,6 +372,11 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .bigcard .bc-go { width:46px; height:46px; flex:none; border-radius:14px; background:var(--lime); color:var(--lime-ink);
   display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; }
 .bigcard .meta .misvg { display:inline-block; vertical-align:-2px; margin-right:2px; }
+
+/* puntini colore-muscolo: informazione discreta, il resto del tema resta monocromo */
+.mdotx { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+.muspill { display:inline-flex; align-items:center; gap:5px; margin-right:12px; }
+.muspill i { width:7px; height:7px; border-radius:50%; flex:none; }
 
 /* textarea note nella vista focus */
 .notebox { width:100%; min-height:64px; font-family:var(--sans); font-size:14.5px; line-height:1.5; resize:vertical; }
@@ -402,7 +407,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .serhead span { white-space:nowrap; overflow:hidden; }
 .ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }
 .ocard.done2 { opacity:.55; }
-.ocard.pair { border-left:3px solid rgba(49,224,180,.55); }
+.ocard.pair { border-left:3px solid rgba(201,249,78,.55); }
 .ocard .chev { color:var(--mut2); font-size:20px; flex:none; }
 .ocard .meta { margin-top:3px; }
 

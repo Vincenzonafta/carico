@@ -124,7 +124,7 @@ const TABS: Tab[] = ['oggi', 'schede', 'allena', 'cibo', 'coach', 'profilo']
 const muscleOf = (s: State, ex: string) =>
   [...EXERCISES, ...s.customExercises].find((e) => e.name === ex)?.muscle ?? lookupMuscle(ex)
 
-const rColor = (r: number) => (r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)')
+const rColor = (r: number) => (r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)')
 
 // Ogni cambio di schermata (tab o vista interna) riparte dall'inizio, senza flash
 const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0) }, [dep]) }
@@ -230,7 +230,7 @@ export default function App() {
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
-  const rColor = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
+  const rColor = r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
 
   if (supa && authed === null)
     return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
@@ -349,7 +349,7 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
-  const rCol = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
+  const rCol = r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
   const rHead = r >= 80 ? 'Giornata da spingere' : r >= 65 ? 'Giornata nella norma' : 'Meglio andarci piano'
   const ciToday = s.checkin.date === today()
   const ore = s.checkin.ore ?? 7.5
@@ -702,7 +702,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
               <span className="stag" style={{ margin: 0, display: 'inline-block' }}>Giorno {i + 1}</span>
               <b className="bc-title" style={{ display: 'block', marginTop: 7 }}>{dd.name}</b>
               <div className="meta num" style={{ marginTop: 5 }}><Dumb /> {dd.items.length} esercizi{min > 0 && <> · <Clock /> ~{min} min</>}</div>
-              {mus.length > 0 && <div className="meta" style={{ marginTop: 4 }}>{mus.join(' · ')}</div>}
+              {mus.length > 0 && <div className="meta" style={{ marginTop: 5 }}>{mus.map((m) => <span key={m} className="muspill"><i style={{ background: mcolor(m) }} />{m}</span>)}</div>}
             </div>
             <span className="bc-go">›</span>
           </div>
@@ -743,8 +743,8 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
           <DragList items={items} rowH={64} keyOf={(it) => it.ex}
             render={(it) => (<>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>SS</span>}
-                <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}{it.note ? ' · ✎' : ''}</div>
+                <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag">SS</span>}
+                <div className="meta num" style={{ marginTop: 3 }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}{it.note ? ' · ✎' : ''}</div>
               </div>
               <span className="chev">›</span>
             </>)}
@@ -760,7 +760,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
             <div key={i}>
               <div className="set" onClick={() => setEdit(edit === i ? null : i)} style={{ cursor: 'pointer' }}>
                 <div style={{ minWidth: 0 }}>
-                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && items[i + 1] && <span className="stag" style={{ color: 'var(--teal)', background: 'rgba(49,224,180,.12)' }}>Superset con {items[i + 1].ex}</span>}
+                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && items[i + 1] && <span className="stag">Superset con {items[i + 1].ex}</span>}
                   <div className="meta num">{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
                   {it.note && <div className="note">✎ {it.note}</div>}
                 </div>
@@ -853,7 +853,7 @@ function TimerBar({ timer, total, onTimer, onTotal }: {
           <div className="tl">Recupero</div>
           <div className="tv num">{mmss(timer)}</div>
         </div>
-        <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--teal)' }} /></div>
+        <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--lime)' }} /></div>
         <button className="tbtn num" onClick={() => onTimer(Math.max(0, timer - 15))}>−15</button>
         <button className="tbtn num" onClick={() => { onTimer(timer + 30); onTotal(Math.max(total, timer + 30)) }}>+30</button>
         <button className="tbtn" onClick={() => onTimer(null)}>✕</button>
@@ -883,7 +883,7 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
       <div className="sheet restsheet" onClick={(e) => e.stopPropagation()}>
         <div className="bc" style={{ margin: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="crumb" style={{ color: 'var(--teal)' }}>Recupero · scorri</div>
+            <div className="crumb" style={{ color: 'var(--lime)' }}>Recupero · scorri</div>
             <div className="bt1 num">{mmss(val)}</div>
           </div>
           <button className="pen" onClick={onClose}>✕</button>
@@ -1018,7 +1018,7 @@ function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: numb
         {target != null && target > bar && (
           <div className="mrow" style={{ marginTop: 10 }}>
             <span className="sm mut">Consigliato: {fmt(target)} kg</span>
-            <b className="num" style={{ color: 'var(--teal)' }}>{fmt((target - bar) / 2)} kg per lato</b>
+            <b className="num" style={{ color: 'var(--lime)' }}>{fmt((target - bar) / 2)} kg per lato</b>
           </div>
         )}
         <p className="sm mut" style={{ margin: '14px 0 6px' }}>Dischi per lato — tocca per aggiungere</p>
@@ -1313,7 +1313,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               <span className="sm">Video esecuzione · in arrivo</span>
             </div>
             <div className="ftitle">{it.ex}</div>
-            <div className="crumb" style={{ margin: '4px 2px 0' }}>{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}</div>
+            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}</div>
 
             <div className="card fstats">
               <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>
@@ -1388,7 +1388,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             <div className={'focusbar' + (timerActive ? ' up' : '')}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="mono sm mut" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase' }}>Durata</div>
-                <b className="num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</b>
+                <b className="num" style={{ color: workoutStart ? 'var(--lime)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</b>
               </div>
               {workoutStart != null && <button className="fbtn" style={{ color: 'var(--coral)', fontSize: 15 }} title="Annulla allenamento"
                 onClick={async () => { await abort(); setFocus(null) }}>✕</button>}
@@ -1412,7 +1412,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               <button className="finito" onClick={finish}>Finito</button>
             </div>
             <div className="wstats">
-              <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--teal)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</div></div>
+              <div className="ws"><div className="l">Durata</div><div className="v num" style={{ color: workoutStart ? 'var(--lime)' : 'var(--mut2)' }}>{workoutStart ? durataFmt(dur) : '—'}</div></div>
               <div className="ws"><div className="l">Volume</div><div className="v num">{fmt(todayVol)} <span className="sm mut">kg</span></div></div>
               <div className="ws"><div className="l">Serie</div><div className="v num">{totalDone}</div></div>
             </div>
@@ -1434,7 +1434,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <span className="othumb"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <b className="otitle">{it.ex}</b>
-                  <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)}{it.ss ? ' · SS' : ''}{it.note ? ' · ✎' : ''}</div>
+                  <div className="meta num" style={{ marginTop: 3 }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle} · {schemeSummary(it)}{it.ss ? ' · SS' : ''}{it.note ? ' · ✎' : ''}</div>
                 </div>
                 <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
                 <span className="chev">›</span>
@@ -1451,7 +1451,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <span className="othumb"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <b className="otitle">{it.ex}</b>
-                  <div className="meta num" style={{ marginTop: 3 }}>{it.muscle} · {schemeSummary(it)} · extra</div>
+                  <div className="meta num" style={{ marginTop: 3 }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle} · {schemeSummary(it)} · extra</div>
                 </div>
                 <span className={'exprog num' + (exDone ? ' ok' : '')}>{exDone ? '✓' : `${done}/${sps.length}`}</span>
                 {done === 0 && <span className="del" onClick={(e) => { e.stopPropagation(); removeExtra(it.ex) }}>✕</span>}
@@ -2475,7 +2475,7 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
 
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
-  const rCol = r >= 80 ? 'var(--teal)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
+  const rCol = r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
   const ciDone = s.checkin.date === today()
 
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
