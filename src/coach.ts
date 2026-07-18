@@ -3,9 +3,10 @@
 // id: riga specchiata nel cloud (i salvataggi vecchi non ce l'hanno)
 export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null }
 export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap' | 'failure'
-export type SetSpec = { type: SetType; reps: string; load?: string }
-// ss = superset con l'esercizio immediatamente successivo del giorno
-export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean }
+// target = sforzo prescritto per la serie ("@8", "RIR2"): testo libero, l'IA e il parser lo capiscono
+export type SetSpec = { type: SetType; reps: string; load?: string; target?: string }
+// ss = superset con l'esercizio immediatamente successivo del giorno; tempo = tempi/fermi ("disc. 3s, fermo 2s")
+export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number; ore?: number }
@@ -24,7 +25,7 @@ export type State = {
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
-  settings: { sound: boolean; vibrate: boolean; geminiKey?: string } // geminiKey: chiave IA dell'utente (BYOK)
+  settings: { sound: boolean; vibrate: boolean; geminiKey?: string; rir?: boolean } // geminiKey: chiave IA (BYOK); rir: mostra RIR invece di RPE
   finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
   finishedKcal?: number // calorie stimate dell'allenamento concluso (per la vista)
   finishedHealth?: { durata: number; calorie: number; distanza: number } // payload JSON pronto per Apple Health

@@ -775,7 +775,8 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                       <button className="ghost mini" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}>↓</button>
                     </div>
                   </div>
-                  <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, tempo 3-1-1" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
+                  <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, gomiti chiusi" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
+                  <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
 
                   {!it.scheme ? (
                     <>
@@ -791,7 +792,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                         ))}
                       </div>
                       <div className="setlist">
-                        <div className="slh"><span>#</span><span>Tipo</span><span>Reps</span><span>Carico</span><span></span></div>
+                        <div className="slh"><span>#</span><span>Tipo</span><span>Reps</span><span>Carico</span><span>Target</span><span></span></div>
                         {it.scheme.map((sp, j) => (
                           <div className={'slr st-' + sp.type} key={j}>
                             <span className="sidx">{j + 1}</span>
@@ -800,6 +801,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                             </select>
                             <input value={sp.reps} onChange={(e) => updSet(i, j, { reps: e.target.value })} placeholder="8" />
                             <input value={sp.load ?? ''} onChange={(e) => updSet(i, j, { load: e.target.value })} placeholder="@80%" style={{ fontFamily: 'var(--sans)' }} />
+                            <input value={sp.target ?? ''} onChange={(e) => updSet(i, j, { target: e.target.value || undefined })} placeholder={s.settings.rir ? 'RIR2' : '@8'} style={{ fontFamily: 'var(--sans)' }} />
                             <span className="del" onClick={() => removeSet(i, j)}>✕</span>
                           </div>
                         ))}
@@ -1059,6 +1061,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [restPick, setRestPick] = useState<{ ex: string; isExtra: boolean } | null>(null)
   const [focus, setFocus] = useState<number | null>(null)     // vista focus: indice esercizio (null = overview)
   const [pr, setPr] = useState<{ ex: string; kg: number; reps: number } | null>(null) // festa nuovo record
+  const rirOn = !!s.settings.rir // preferenza: mostra RIR (10 − RPE); internamente si salva sempre RPE
   useEffect(() => {
     if (!pr) return
     const id = setTimeout(() => setPr(null), 3200) // la festa si chiude da sola
@@ -1323,7 +1326,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               <span className="sm">Video esecuzione · in arrivo</span>
             </div>
             <div className="ftitle">{it.ex}</div>
-            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}</div>
+            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}</div>
 
             <div className="card fstats">
               <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>
@@ -1360,7 +1363,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                     <div className="wrow done" key={i}>
                       <span className="sidx ok">✓</span>
                       <b className="num" style={{ fontSize: 14 }}>{fmt(logged.kg)} kg × {logged.reps}</b>
-                      {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)}</span>}
+                      {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>{rirOn ? 'RIR ' + fmt(10 - logged.rpe) : 'RPE ' + fmt(logged.rpe)}</span>}
                       <span className="del" style={{ marginLeft: 'auto' }} onClick={() => uncheck(it.ex, i)}>✕</span>
                     </div>
                   )
@@ -1374,12 +1377,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                     <span className="x">×</span>
                     <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
                     <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })}>
-                      <option value="">RPE</option>{[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v}>{v}</option>)}
+                      <option value="">{rirOn ? 'RIR' : 'RPE'}</option>
+                      {[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v} value={v}>{rirOn ? fmt(10 - v) : fmt(v)}</option>)}
                     </select>
                     <button className="chk" disabled={!active || !!ssWait} onClick={() => check(it, sp, i)}>✓</button>
-                    {(sp.type !== 'normal' || sp.load) && (
-                      <div className="wsub">{setTypeLabel(sp.type)}{sp.load ? ` · ${sp.load}` : ''}</div>
-                    )}
+                    {(() => {
+                      const sub = [sp.type !== 'normal' ? setTypeLabel(sp.type) : null, sp.load, sp.target].filter(Boolean).join(' · ')
+                      return sub ? <div className="wsub">{sub}</div> : null
+                    })()}
                     {active && ssWait && <div className="wsub" style={{ color: 'var(--amber)' }}>Superset: fai prima la serie di {ssWait}</div>}
                   </div>
                 )
@@ -2699,7 +2704,7 @@ function Cloud() {
 
 function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
   const lib = [...EXERCISES, ...s.customExercises]
-  const setOpt = (k: 'sound' | 'vibrate', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
+  const setOpt = (k: 'sound' | 'vibrate' | 'rir', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
   const setTarget = (k: 'kcal' | 'protein', v: number) => setS({ ...s, target: { ...s.target, [k]: v } })
   const editGoal = async () => {
     const v = await promptDlg('Obiettivo', [
@@ -2749,6 +2754,7 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
       <div className="card">
         <div className="mrow"><span>Suono a fine recupero</span><Tog on={s.settings.sound} set={(v) => setOpt('sound', v)} /></div>
         <div className="mrow"><span>Vibrazione a fine recupero</span><Tog on={s.settings.vibrate} set={(v) => setOpt('vibrate', v)} /></div>
+        <div className="mrow"><span>Sforzo in RIR invece di RPE</span><Tog on={!!s.settings.rir} set={(v) => setOpt('rir', v)} /></div>
       </div>
       <h2>Obiettivo attivo</h2>
       <div className="card">
