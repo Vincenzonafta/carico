@@ -1,7 +1,7 @@
 ﻿/* ============ tokens — contrasto alto ============ */
 :root {
-  --bg:#0B0E13; --surf:#191F29; --surf2:#242E3B; --hair:#33404F;
-  --chalk:#F3F6FA; --mut:#9DAABD; --mut2:#6F7C8E;
+  --bg:#050709; --surf:#12161D; --surf2:#1D242E; --hair:#3A4552;
+  --chalk:#FFFFFF; --mut:#A9B5C5; --mut2:#7B8794;
   --lime:#C9F94E; --lime-ink:#20300A; --teal:#31E0B4; --amber:#F5B84A; --coral:#FB6F84; --blue:#63A6F5;
   --sans:"Segoe UI",system-ui,sans-serif; --mono:"Cascadia Code",ui-monospace,Consolas,monospace;
   /* scala tipografica: 11 micro · 13.5 secondario · 16 base · 22 titolo · 30 numeri */
@@ -235,7 +235,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .exbar { width:5px; align-self:stretch; min-height:36px; border-radius:3px; flex:none; }
 
 /* ============ editor esercizio ============ */
-.note { font-size:13.5px; color:var(--amber); margin-top:4px; font-style:italic; line-height:1.4; }
+.note { font-size:13.5px; color:var(--mut); margin-top:4px; font-style:italic; line-height:1.4; }
 .editor { display:grid; grid-template-columns:1fr 1fr; gap:11px; padding:12px 2px 15px; border-bottom:1px solid var(--hair); }
 .efield { display:flex; flex-direction:column; gap:6px; }
 .efield.full { grid-column:1 / -1; }
@@ -258,10 +258,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .sidx { width:26px; height:26px; border-radius:50%; background:transparent; border:1.5px solid var(--hair); color:var(--mut); flex:none;
   font-family:var(--mono); font-size:11.5px; font-weight:800; display:flex; align-items:center; justify-content:center; }
 .sidx.ok { background:var(--lime); border-color:var(--lime); color:var(--lime-ink); }
-.st-warmup .sidx { border-color:rgba(99,166,245,.65); color:var(--blue); }
-.st-ramp .sidx { border-color:rgba(201,249,78,.65); color:var(--lime); }
-.st-backoff .sidx { border-color:rgba(49,224,180,.65); color:var(--teal); }
-.st-drop .sidx, .st-failure .sidx { border-color:rgba(251,111,132,.65); color:var(--coral); }
+/* meno colori: i tipi-serie si leggono dall'etichetta sotto la riga, i cerchi restano neutri */
 .st-amrap .sidx { background:rgba(245,184,74,.22); color:var(--amber); }
 
 /* ============ chip e segmenti ============ */
@@ -373,6 +370,19 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; }
 .bigcard .meta .misvg { display:inline-block; vertical-align:-2px; margin-right:2px; }
 
+/* festa nuovo record: coriandoli + card che salta fuori */
+.prfx { position:fixed; inset:0; z-index:80; background:rgba(2,4,6,.6); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.pcf { position:absolute; top:-5vh; width:9px; height:14px; border-radius:2px; opacity:.95; animation:prfall 1.8s linear infinite; }
+@keyframes prfall { to { transform:translateY(115vh) rotate(560deg); } }
+.prcard { background:var(--surf); border:1px solid var(--hair); border-radius:22px; padding:26px 36px; text-align:center;
+  box-shadow:0 22px 70px rgba(0,0,0,.65); animation:prpop .5s cubic-bezier(.2,1.7,.4,1); }
+@keyframes prpop { from { transform:scale(.4); opacity:0; } }
+.prstar { font-size:46px; color:var(--amber); animation:prspin 1s ease; }
+@keyframes prspin { from { transform:rotate(-220deg) scale(.2); } }
+.prcard .prt { font-family:var(--mono); font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:var(--lime); font-weight:700; margin-top:8px; }
+.prcard .prv { font-size:18px; font-weight:800; margin-top:9px; }
+.prcard .prw { font-size:27px; font-weight:800; color:var(--lime); margin-top:3px; }
+
 /* puntini colore-muscolo: informazione discreta, il resto del tema resta monocromo */
 .mdotx { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:1px; }
 .muspill { display:inline-flex; align-items:center; gap:5px; margin-right:12px; }
@@ -480,12 +490,12 @@ body:has(input:focus:not([type=range]), textarea:focus) .focusbar { display:none
 .waterhead { display:flex; align-items:center; justify-content:space-between; }
 .waterbtns { display:flex; gap:8px; margin-top:12px; }
 .wbtn { flex:1; padding:11px 0; font-size:14px; font-weight:700; font-family:var(--mono);
-  background:rgba(99,166,245,.14); color:var(--blue); border:1px solid rgba(99,166,245,.3); border-radius:11px; }
+  background:rgba(201,249,78,.12); color:var(--lime); border:1px solid rgba(201,249,78,.3); border-radius:11px; }
 .wbtn.minus { background:var(--surf2); color:var(--mut); border-color:var(--hair); }
 
 /* risultati OpenFoodFacts nel picker */
 .offhead { font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em; text-transform:uppercase;
-  color:var(--blue); font-weight:700; margin:14px 2px 6px; padding-top:10px; border-top:1px solid var(--hair); }
+  color:var(--mut); font-weight:700; margin:14px 2px 6px; padding-top:10px; border-top:1px solid var(--hair); }
 
 /* dettaglio alimento */
 .fdetail { height:auto; max-height:90%; overflow-y:auto; }

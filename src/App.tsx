@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
-  type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta,
+  type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -481,7 +481,7 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
           <MacroRing v={tot.carbs} max={s.target.carbs} color="var(--amber)" label="Carbo" />
           <MacroRing v={tot.fat} max={s.target.fat} color="#A78BFA" label="Grassi" />
         </div>
-        <div style={{ marginTop: 12 }}><Bar v={wt} max={wg} color="var(--blue)" label="Acqua" unit="ml" /></div>
+        <div style={{ marginTop: 12 }}><Bar v={wt} max={wg} color="var(--lime)" label="Acqua" unit="ml" /></div>
       </div>
 
       {mvEntries.length > 0 && (<>
@@ -659,9 +659,9 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
           </div>
         )
       })}
-      <button className="ghost" onClick={addScheda}>+ Nuova scheda</button>
+      <button className="ghost" style={{ marginTop: 14 }} onClick={addScheda}>+ Nuova scheda</button>
 
-      <h2>Importa scheda</h2>
+      <h2 style={{ marginTop: 30 }}>Importa scheda</h2>
       {!imp ? (
         <button className="ghost" onClick={() => setImp(true)}>Importa da file o testo</button>
       ) : (
@@ -1058,6 +1058,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [swap, setSwap] = useState<{ ex: string; isExtra: boolean } | null>(null)
   const [restPick, setRestPick] = useState<{ ex: string; isExtra: boolean } | null>(null)
   const [focus, setFocus] = useState<number | null>(null)     // vista focus: indice esercizio (null = overview)
+  const [pr, setPr] = useState<{ ex: string; kg: number; reps: number } | null>(null) // festa nuovo record
+  useEffect(() => {
+    if (!pr) return
+    const id = setTimeout(() => setPr(null), 3200) // la festa si chiude da sola
+    return () => clearTimeout(id)
+  }, [pr])
 
   const addExtra = (name: string) => {
     const muscle = lib.find((e) => e.name === name)?.muscle ?? lookupMuscle(name)
@@ -1197,10 +1203,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     if (!kg || !+d.reps) return toast('Servono peso e ripetizioni')
     if (workoutStart == null) setWorkoutStart(Date.now()) // il cronometro parte dalla prima serie segnata
     const rpe = d.rpe ? +d.rpe : null
+    // Festa record: la serie appena fatta batte il miglior e1rm di sempre su questo esercizio
+    const prev = record(s.log, it.ex)
+    const isPr = !!prev && e1rm(kg, +d.reps) > e1rm(prev.kg, prev.reps) + 0.01
     let id: string | undefined
     try { id = serieLoggata(it.ex, kg, +d.reps, rpe) } // specchio cloud: sessione + recupero reale
     catch (e) { console.warn('[serie cloud]', e) } // un errore di sync NON deve bloccare il salvataggio locale
     setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg, reps: +d.reps, rpe }] })
+    if (isPr) { setPr({ ex: it.ex, kg, reps: +d.reps }); navigator.vibrate?.([90, 60, 90]) }
     startRest(it.rest)
     if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
       cloudNudged = true
@@ -1507,6 +1517,20 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       )}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
 
+      {pr && (
+        <div className="prfx" onClick={() => setPr(null)}>
+          {Array.from({ length: 26 }, (_, i) => (
+            <span key={i} className="pcf" style={{ left: (i * 3.9 + 1.5) + '%', animationDelay: (i % 7) * 0.14 + 's', background: ['var(--lime)', '#fff', 'var(--amber)'][i % 3] }} />
+          ))}
+          <div className="prcard">
+            <div className="prstar">★</div>
+            <div className="prt">Nuovo record</div>
+            <div className="prv">{pr.ex}</div>
+            <div className="prw num">{fmt(pr.kg)} kg × {pr.reps}</div>
+          </div>
+        </div>
+      )}
+
       {summary && (
         <div className="overlay center" onClick={chiudiSummary}>
           <div className="card done" style={{ maxWidth: 394, width: '100%', margin: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -1779,9 +1803,9 @@ function FoodPicker({ foods, recents, typeLabel, onPick, onClose, onCreate, onQu
           )}
           {remote.map((f) => (
             <div className="prow2" key={'off-' + f.name} onClick={() => onAddExternal(f)}>
-              <span className="exbar" style={{ background: 'var(--blue)' }} />
+              <span className="exbar" style={{ background: 'var(--mut2)' }} />
               <div style={{ minWidth: 0 }}><b>{f.name}</b>
-                <div className="meta num" style={{ color: 'var(--blue)' }}>{f.kcal} kcal · {f.protein}P {f.carbs}C {f.fat}G <span className="mut">/100g</span></div></div>
+                <div className="meta num">{f.kcal} kcal · {f.protein}P {f.carbs}C {f.fat}G <span className="mut">/100g</span></div></div>
               <span className="chev" style={{ color: 'var(--lime)' }}>＋</span>
             </div>
           ))}
@@ -1938,14 +1962,14 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
           <div className="num" style={{ fontSize: 26, fontWeight: 800 }}>{(wt / 1000).toFixed(1).replace('.', ',')} <span className="sm mut">/ {(wg / 1000).toFixed(1).replace('.', ',')} L</span></div>
           <button className="pen" style={{ width: 36, height: 36, fontSize: 15 }} onClick={setWaterExact} title="Imposta"><Gear size={16} /></button>
         </div>
-        <div className="bt" style={{ height: 8, marginTop: 8 }}><i style={{ width: Math.min(100, wg ? wt / wg * 100 : 0) + '%', background: 'var(--blue)' }} /></div>
+        <div className="bt" style={{ height: 8, marginTop: 8 }}><i style={{ width: Math.min(100, wg ? wt / wg * 100 : 0) + '%', background: 'var(--lime)' }} /></div>
         <div className="waterbtns">
           <button className="wbtn minus" onClick={() => setWater(wt - 500)}>−500</button>
           <button className="wbtn minus" onClick={() => setWater(wt - 250)}>−250</button>
           <button className="wbtn" onClick={() => setWater(wt + 250)}>+250</button>
           <button className="wbtn" onClick={() => setWater(wt + 500)}>+500</button>
         </div>
-        {wg > 2500 && <p className="sm mut" style={{ margin: '10px 2px 0' }}>Obiettivo <b style={{ color: 'var(--blue)' }}>+700 ml</b> oggi: ti alleni, servono più liquidi.</p>}
+        {wg > 2500 && <p className="sm mut" style={{ margin: '10px 2px 0' }}>Obiettivo <b style={{ color: 'var(--lime)' }}>+700 ml</b> oggi: ti alleni, servono più liquidi.</p>}
       </div>
 
       {MEAL_TYPES.map(({ key, label }) => {
