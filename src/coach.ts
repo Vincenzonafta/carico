@@ -25,7 +25,7 @@ export type State = {
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
-  settings: { sound: boolean; vibrate: boolean; geminiKey?: string; rir?: boolean } // geminiKey: chiave IA (BYOK); rir: mostra RIR invece di RPE
+  settings: { sound: boolean; vibrate: boolean; geminiKey?: string } // geminiKey: chiave IA dell'utente (BYOK)
   finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
   finishedKcal?: number // calorie stimate dell'allenamento concluso (per la vista)
   finishedHealth?: { durata: number; calorie: number; distanza: number } // payload JSON pronto per Apple Health
