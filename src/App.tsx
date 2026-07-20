@@ -729,7 +729,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
           </div>
         )
       })}
-      <button className="ghost" style={{ marginTop: 14 }} onClick={addScheda}>+ Nuova scheda</button>
+      <button className="ghost addafter" onClick={addScheda}>+ Nuova scheda</button>
 
       <h2 style={{ marginTop: 30 }}>Importa scheda</h2>
       <label className="ghost filebtn" style={{ borderColor: 'rgba(201,249,78,.5)', color: 'var(--lime)' }}>
@@ -820,7 +820,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
           </div>
         )
       })}
-      <button className="ghost" onClick={addDay} style={{marginTop:20}} >+ Nuovo giorno</button>
+      <button className="ghost addafter" onClick={addDay}>+ Nuovo giorno</button>
       {sc && (
         <button className="ghost" style={{ marginTop: 20, color: 'var(--coral)' }}
           onClick={async () => { if (await confirmDlg('Eliminare questa scheda?', sc?.name)) { mutate((d) => { d.schede.splice(s.activeScheda, 1); d.activeScheda = 0; d.activeDay = 0 }); setView('list') } }}>
@@ -1214,14 +1214,17 @@ function RpeCalc({ ex, kg0, reps0, max0, onUse, onClose }: {
           {daSerie ? 'da questa serie' : max0 ? 'dal tuo storico — compila la serie per ricalcolarlo' : 'compila la serie qui sopra'}
         </p>
         {max > 0 && <>
-          <p className="sm mut" style={{ margin: '16px 0 7px' }}>Carico per centrare reps @ RPE — tocca per usarlo</p>
+          <div className="rpecap">
+            <b>Che carico usare</b>
+            <span>righe = ripetizioni · colonne = RPE · tocca per usarlo</span>
+          </div>
           <div className="rpegrid">
-            <span />
-            {COLS.map((c) => <span key={c} className="rh">@{c}</span>)}
+            <span className="rh corner">rip.</span>
+            {COLS.map((c) => <span key={c} className={'rh' + (+rpe === c ? ' on' : '')}>@{c}</span>)}
             {ROWS.flatMap((r) => [
-              <span key={'h' + r} className="rh">{r} rip.</span>,
+              <span key={'h' + r} className="rh side">{r}</span>,
               ...COLS.map((c) => (
-                <button key={r + '-' + c} className="rc num" onClick={() => onUse(caricoPerRpe(max, r, c))}>
+                <button key={r + '-' + c} className={'rc num' + (+rpe === c ? ' on' : '')} onClick={() => onUse(caricoPerRpe(max, r, c))}>
                   {fmt(caricoPerRpe(max, r, c))}
                 </button>
               )),
@@ -1554,7 +1557,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
               <div className="cardh"><b>Serie</b></div>
-              <div className="serhead"><span /><span>Peso (kg)</span><span /><span>Reps</span><span>RPE</span><span>RIR</span><span /></div>
+              <div className="serhead"><span /><span>Peso (kg)</span><span>Reps</span><span>RPE</span><span>RIR</span><span /></div>
               {sps.map((sp, i) => {
                 if (i < done) {
                   const logged = logOf(it.ex)[i]
@@ -1573,7 +1576,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <div className={'wrow st-' + sp.type + (active ? ' active' : ' pending')} key={i}>
                     <span className="sidx">{i + 1}</span>
                     <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
-                    <span className="x">×</span>
                     <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
                     {/* RPE e RIR sono due facce della stessa cosa (RIR = 10 − RPE): entrambi i campi
                         restano compilabili, ma il valore vero è UNO SOLO, così non possono discordare. */}
@@ -1596,7 +1598,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 )
               })}
               <div className="setbtns" style={{ marginTop: 12 }}>
-                <button className="restchip" style={{ flex: 1, margin: 0, justifyContent: 'center' }} onClick={() => setRestPick({ ex: it.ex, isExtra })}>
+                <button className="restchip" style={{ margin: 0, justifyContent: 'center' }} onClick={() => setRestPick({ ex: it.ex, isExtra })}>
                   <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
                 </button>
                 {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}

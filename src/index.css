@@ -157,14 +157,17 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   background:var(--surf2); border-radius:999px; padding:6px 12px; flex:none; margin-left:auto; }
 .exprog.ok { color:var(--lime); background:rgba(201,249,78,.14); }
 
-/* 7 colonne: nr · kg · × · reps · RPE · RIR · ✓ — stretta ma deve stare su un telefono da 375px */
-.wrow { display:grid; grid-template-columns:26px 1fr 8px 1fr 50px 50px 48px; gap:5px; align-items:center; padding:8px 0; }
+/* Colonne delle serie definite UNA VOLTA: intestazione e riga le condividono,
+   così le scritte RPE/RIR non possono più scivolare fuori asse dai loro campi.
+   Tolto il separatore "×": su 375px quei pixel servono ai campi veri. */
+:root { --serie-cols:26px 1fr 1fr 54px 54px 46px; --serie-gap:6px; }
+.wrow { display:grid; grid-template-columns:var(--serie-cols); gap:var(--serie-gap); align-items:center; padding:9px 0; }
 .wrow input, .wrow select { padding:11px 4px; font-size:15px; border-radius:10px; text-align:center; min-width:0; }
-.wrow select { padding:11px 1px; font-size:13px; -webkit-appearance:none; appearance:none; }
+.wrow select { padding:11px 2px; font-size:13.5px; -webkit-appearance:none; appearance:none; text-align-last:center; }
 .wrow .x { text-align:center; color:var(--mut2); }
 .wrow.pending { opacity:.4; }
 .wrow.active { opacity:1; }
-.wrow .chk { width:48px; padding:12px 0; border-radius:11px; font-size:19px; font-weight:800;
+.wrow .chk { width:46px; padding:12px 0; border-radius:11px; font-size:19px; font-weight:800;
   background:var(--surf2); color:var(--mut2); }
 .wrow.active .chk { background:var(--lime); color:var(--lime-ink); }
 .wsub { grid-column:2 / -1; margin-top:-2px; letter-spacing:.08em; }
@@ -174,11 +177,22 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .rpein label { display:block; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em;
   text-transform:uppercase; color:var(--mut); margin-bottom:5px; text-align:center; }
 .rpein input, .rpein select { text-align:center; padding:11px 4px; font-size:15px; }
-.rpegrid { display:grid; grid-template-columns:auto repeat(5, 1fr); gap:4px; align-items:center; }
-.rpegrid .rh { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--mut2);
+.rpecap { margin:18px 0 9px; }
+.rpecap b { display:block; font-size:15px; font-weight:700; }
+.rpecap span { display:block; margin-top:3px; font-family:var(--mono); font-size:11px;
+  letter-spacing:.04em; color:var(--mut2); }
+/* la colonna delle ripetizioni è stretta e fissa: le 5 colonne dei carichi restano uguali fra loro */
+.rpegrid { display:grid; grid-template-columns:30px repeat(5, 1fr); gap:6px; align-items:center; }
+.rpegrid .rh { font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--mut2);
   text-align:center; white-space:nowrap; }
-.rpegrid .rc { width:auto; padding:9px 2px; font-size:13.5px; font-weight:700; border-radius:9px;
-  background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); }
+.rpegrid .rh.corner { font-size:9.5px; }
+.rpegrid .rh.side { font-weight:700; color:var(--mut); }
+.rpegrid .rh.on { color:var(--lime); font-weight:700; }
+.rpegrid .rc { width:auto; padding:11px 2px; font-size:14px; font-weight:700; border-radius:10px;
+  background:var(--surf2); color:var(--mut); border:1px solid var(--hair); }
+/* la colonna dell'RPE scelto sopra resta accesa: è quella che stai cercando */
+.rpegrid .rc.on { color:var(--chalk); border-color:color-mix(in srgb, var(--lime) 45%, transparent);
+  background:color-mix(in srgb, var(--lime) 12%, var(--surf2)); }
 .rpegrid .rc:active { background:var(--lime); color:var(--lime-ink); }
 
 .hint { font-family:var(--mono); font-size:12.5px; color:var(--mut); margin:10px 2px 2px; }
@@ -242,6 +256,10 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   background:transparent; border:1px solid var(--hair); color:var(--mut); font-size:19px; }
 /* stesso bottone, taglia ridotta per stare nella top bar */
 .hpen { width:34px; height:34px; font-size:16px; border-radius:10px; margin-left:8px; }
+
+/* tasto "aggiungi" che chiude una lista di card: deve staccarsi dalla lista,
+   altrimenti sembra l'ultima voce dell'elenco invece di un'azione */
+.addafter { margin-top:28px; }
 
 .navcard { display:flex; align-items:center; gap:12px; background:var(--surf); border:1px solid var(--hair);
   border-radius:16px; padding:15px; margin-bottom:10px; cursor:pointer; }
@@ -310,7 +328,10 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .gearbtn:active { color:var(--chalk); }
 .addset { width:100%; margin-top:8px; padding:9px; font-size:13px; font-weight:600; font-family:var(--sans);
   background:transparent; color:var(--mut); border:1.5px dashed var(--hair); border-radius:11px; }
-.setbtns { display:flex; gap:8px; }
+/* con l'aggiunta del tasto RPE qui stavano 4 controlli su una riga sola: ora il
+   chip del riposo si prende la sua riga e i tre tasti azione stanno sotto, larghi. */
+.setbtns { display:flex; gap:8px; flex-wrap:wrap; }
+.setbtns .restchip { flex:1 1 100%; }
 .setbtns .addset { flex:1; width:auto; }
 .setbtns .addset.rm { flex:0 0 auto; padding:9px 16px; color:var(--coral);
   background:rgba(251,111,132,.12); border:1.5px solid rgba(251,111,132,.4); border-style:solid; }
@@ -430,9 +451,10 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .cardh-div { height:1px; background:var(--hair); margin:11px 0; }
 
 /* intestazioni colonne della card Serie */
-.serhead { display:grid; grid-template-columns:26px 1fr 8px 1fr 50px 50px 48px; gap:5px; margin:10px 0 0;
-  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut2); text-align:center; }
-.serhead span { white-space:nowrap; overflow:hidden; }
+.serhead { display:grid; grid-template-columns:var(--serie-cols); gap:var(--serie-gap); margin:12px 0 2px;
+  font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut2); }
+/* ogni etichetta centrata NELLA SUA colonna, non nella riga intera */
+.serhead span { white-space:nowrap; overflow:hidden; text-align:center; }
 .ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }
 .ocard.done2 { opacity:.55; }
 .ocard.pair { border-left:3px solid rgba(201,249,78,.55); }
