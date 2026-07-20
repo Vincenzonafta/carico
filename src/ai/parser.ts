@@ -98,7 +98,13 @@ const SCHEMA = {
   },
 }
 
-export async function parseSchedaFile(file: File, apiKey: string): Promise<Scheda[]> {
+// `nota` = spiegazione scritta dall'atleta su com'è fatta la sua scheda (notazione del suo
+// coach, significato delle colonne, correzioni dopo un'anteprima sbagliata). Ha la precedenza
+// sulle regole generali: è lui che il documento ce l'ha davanti.
+export async function parseSchedaFile(file: File, apiKey: string, nota?: string): Promise<Scheda[]> {
+  const istruzioni = nota?.trim()
+    ? `${PROMPT}\n\nISTRUZIONI DELL'ATLETA SU QUESTA SCHEDA — hanno la PRECEDENZA sulle regole qui sopra\nogni volta che le contraddicono, perché descrivono la notazione del suo preparatore:\n${nota.trim()}`
+    : PROMPT
   const b64 = await new Promise<string>((res, rej) => {
     const r = new FileReader()
     r.onload = () => res(String(r.result).split(',')[1] ?? '')
@@ -112,7 +118,7 @@ export async function parseSchedaFile(file: File, apiKey: string): Promise<Sched
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [
         { inlineData: { mimeType: file.type || 'application/pdf', data: b64 } },
-        { text: PROMPT },
+        { text: istruzioni },
       ] }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA },
     }),

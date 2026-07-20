@@ -40,7 +40,10 @@ export type State = {
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
   body: BodyLog[]; goal: Goal; water: Water[]
-  settings: { sound: boolean; vibrate: boolean; geminiKey?: string } // geminiKey: chiave IA dell'utente (BYOK)
+  // geminiKey: chiave IA dell'utente (BYOK).
+  // schedaNota: come è fatta la SUA scheda, scritto da lui. Persistente perché il suo coach
+  // usa sempre la stessa notazione: la spiega una volta e vale per ogni import futuro.
+  settings: { sound: boolean; vibrate: boolean; geminiKey?: string; schedaNota?: string }
   finishedDate?: string // giorno (YYYY-MM-DD) in cui l'allenamento è stato concluso con "Finito"
   finishedKcal?: number // calorie stimate dell'allenamento concluso (per la vista)
   finishedHealth?: { durata: number; calorie: number; distanza: number } // payload JSON pronto per Apple Health

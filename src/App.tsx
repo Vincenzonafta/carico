@@ -604,6 +604,10 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   const [edit, setEdit] = useState<number | null>(null)
   const [imp, setImp] = useState(false); const [text, setText] = useState('')
   const [aiImp, setAiImp] = useState<{ state: 'busy' } | { state: 'preview'; schede: Scheda[] } | null>(null)
+  // spiegazione PERMANENTE (la notazione del suo coach) vs correzione USA-E-GETTA di questo documento
+  const [aiNota, setAiNota] = useState(s.settings.schedaNota ?? '')
+  const [aiFix, setAiFix] = useState('')
+  const aiFile = useRef<File | null>(null) // tenuto da parte per poter ripassare lo stesso file
   const [view, setView] = useState<'list' | 'scheda' | 'day'>('list')
   const [picker, setPicker] = useState(false)
   useTop(view)
@@ -681,14 +685,25 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   }
   const readFile = (e: ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) f.text().then(setText) }
   // Import IA: PDF/foto → Gemini (structured output) → anteprima → conferma
-  const onAiFile = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onAiFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = ''
     if (!f) return
+    aiFile.current = f
+    setAiFix('')
+    void runAi(f, aiNota)
+  }
+  // Ripassa lo STESSO documento aggiungendo la correzione: è dopo l'anteprima che si insegna
+  // davvero, perché l'errore ce l'hai davanti e sai dire cosa non torna.
+  const ripassaAi = () => {
+    if (!aiFile.current) return
+    void runAi(aiFile.current, [aiNota.trim(), aiFix.trim()].filter(Boolean).join('\n'))
+  }
+  const runAi = async (f: File, nota: string) => {
     const key = s.settings.geminiKey?.trim()
     if (!key) return toast('Serve la chiave IA: Profilo → ⚙ → Coach IA')
     setAiImp({ state: 'busy' })
     try {
-      const schede = await parseSchedaFile(f, key)
+      const schede = await parseSchedaFile(f, key, nota)
       setAiImp({ state: 'preview', schede })
     } catch (err) {
       toast((err as Error).message || 'Errore durante la lettura')
@@ -698,7 +713,12 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   const confirmAi = () => {
     if (aiImp?.state !== 'preview') return
     const n = aiImp.schede.length
-    mutate((d) => { d.schede.push(...aiImp.schede); d.activeScheda = d.schede.length - n; d.activeDay = 0 })
+    // la spiegazione si salva, la correzione no: la prima è una regola del suo coach che varrà
+    // sempre, la seconda riguardava questo documento e accumularla sporcherebbe le prossime letture
+    mutate((d) => {
+      d.schede.push(...aiImp.schede); d.activeScheda = d.schede.length - n; d.activeDay = 0
+      d.settings.schedaNota = aiNota.trim() || undefined
+    })
     setAiImp(null)
     toast(n === 1 ? 'Scheda importata ✓' : n + ' schede importate ✓')
   }
@@ -733,6 +753,14 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       <button className="ghost addafter" onClick={addScheda}>+ Nuova scheda</button>
 
       <h2 style={{ marginTop: 30 }}>Importa scheda</h2>
+      <div className="card" style={{ marginBottom: 8 }}>
+        <div className="crumb" style={{ marginBottom: 7 }}>Spiega com'è fatta la tua scheda</div>
+        <textarea className="notebox" rows={3} value={aiNota} onChange={(e) => setAiNota(e.target.value)}
+          placeholder={'es. "10*3s vuol dire 10 ripetizioni per 3 serie" · "le colonne sono le settimane" · "@ è sempre un RPE"'} />
+        <p className="sm mut" style={{ margin: '7px 0 0' }}>
+          Resta salvata. Il tuo preparatore usa sempre la stessa notazione: la spieghi una volta e vale per ogni import.
+        </p>
+      </div>
       <label className="ghost filebtn" style={{ borderColor: 'rgba(201,249,78,.5)', color: 'var(--lime)' }}>
         ✨ Importa da PDF o foto con l'IA
         <input type="file" accept=".pdf,image/*" onChange={onAiFile} style={{ display: 'none' }} />
@@ -782,7 +810,15 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                     </div>
                   ))}
                 </div>
-                <button onClick={confirmAi}>Importa {aiImp.schede.length === 1 ? 'la scheda' : 'tutte e ' + aiImp.schede.length}</button>
+                <div className="card" style={{ marginTop: 10 }}>
+                  <div className="crumb" style={{ marginBottom: 7 }}>Non torna qualcosa?</div>
+                  <textarea className="notebox" rows={2} value={aiFix} onChange={(e) => setAiFix(e.target.value)}
+                    placeholder={'es. "la terza colonna è la Week 7" · "il primo numero sono le serie, non le ripetizioni"'} />
+                  <button className="ghost" style={{ marginTop: 8 }} disabled={!aiFix.trim()} onClick={ripassaAi}>
+                    ↻ Rileggi il documento con questa correzione
+                  </button>
+                </div>
+                <button style={{ marginTop: 10 }} onClick={confirmAi}>Importa {aiImp.schede.length === 1 ? 'la scheda' : 'tutte e ' + aiImp.schede.length}</button>
               </>
             )}
           </div>
