@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
-  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx,
+  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -15,7 +15,7 @@ import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
-import { chiamaCoach, type ChatMsg } from './ai/coach'
+import { chiamaCoach, aggiustaPeso, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
@@ -1281,11 +1281,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
   const [playVid, setPlayVid] = useState<{ url: string; ex: string; i: number; title: string } | null>(null)
-  // massimale di partenza per il calcolatore: usa l'RPE quando l'ho segnato, altrimenti Epley
-  const maxOf = (ex: string) => {
-    const ls = s.log.filter((l) => l.ex === ex)
-    return ls.length ? Math.max(...ls.map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps)))) : 0
-  }
+  const maxOf = (ex: string) => maxStimato(s.log, ex)
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1453,17 +1449,54 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const totalDone = items.reduce((a, it) => a + Math.min(logOf(it.ex).length, specs(it).length), 0)
   const pct = totalPlanned ? Math.round((totalDone / totalPlanned) * 100) : 0
 
-  // peso proposto per la singola serie: proposta base +/- il modificatore % dello schema
-  // ponytail: il carico "@80%" è interpretato come % della proposta, non del 1RM; basta per pre-compilare
+  // Peso proposto per la singola serie, in ordine di autorevolezza:
+  //  1) "87%" = percentuale ASSOLUTA del massimale. È una prescrizione del programma:
+  //     si rispetta e NON la si corregge con la readiness.
+  //  2) l'RPE prescritto ("@8"): l'autoregolazione è già lui, quindi niente correzione sopra.
+  //  3) niente di tutto ciò → la stima storica, che la readiness la applica.
+  // "-5%" è un'altra cosa da "87%": è uno scarico RELATIVO al peso di lavoro, non del massimale.
   const propose = (it: PlanItem, sp: SetSpec): number | null => {
     const reps = parseInt(sp.reps, 10) || itemReps(it)
-    const base = proposta(s, it.ex, reps)
-    if (!base) return null
-    let kg = base.kg
-    const m = sp.load?.match(/(-?)\s*@?\s*(\d+)\s*%/)
-    if (m) kg = m[1] === '-' ? kg * (1 - +m[2] / 100) : kg * (+m[2] / 100)
-    else if (sp.type === 'warmup') kg = kg * 0.5
-    return Math.round(kg / 2.5) * 2.5
+    const max = maxStimato(s.log, it.ex)
+    const load = sp.load?.match(/(-?)\s*@?\s*(\d+)\s*%/)
+    if (max > 0 && load && load[1] !== '-') return round25(max * (+load[2] / 100))
+    const rpe = parseTarget(sp.target)
+    let kg = max > 0 && rpe ? caricoPerRpe(max, reps, rpe) : proposta(s, it.ex, reps)?.kg ?? 0
+    if (!kg) return null
+    if (load && load[1] === '-') kg *= 1 - +load[2] / 100
+    if (sp.type === 'warmup') kg *= 0.5
+    return round25(kg)
+  }
+
+  // Chiede all'IA di correggere il peso già calcolato. Serve una base: senza storico
+  // non c'è niente da correggere, e l'utente lo chiede al coach in chat (che ha gli strumenti).
+  const [iaBusy, setIaBusy] = useState(false)
+  const chiediPeso = async (it: PlanItem, sp: SetSpec, i: number) => {
+    const apiKey = s.settings.geminiKey?.trim()
+    if (!apiKey) return toast('Serve la chiave Gemini: Profilo → ⚙ → Coach IA')
+    const base = propose(it, sp)
+    if (!base) return toast('Nessuno storico su questo esercizio: chiedilo al Coach in chat')
+    const reps = parseInt(sp.reps, 10) || itemReps(it)
+    const rpe = parseTarget(sp.target)
+    const fatti = items.slice(0, items.indexOf(it)).filter((x) => logOf(x.ex).length)
+    const righe = [
+      `Esercizio: ${it.ex} (${it.muscle}), serie ${i + 1} di ${specs(it).length}.`,
+      `Prescrizione: ${reps} ripetizioni${rpe ? ` a RPE ${fmt(rpe)}` : ''}${sp.load ? `, carico ${sp.load}` : ''}${it.tempo ? `, tempi ${it.tempo}` : ''}.`,
+      `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale stimato ${fmt(round25(maxStimato(s.log, it.ex)))} kg).`,
+      `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
+      `Già fatti oggi prima di questo: ${fatti.length ? fatti.map((x) => `${x.ex} (${x.muscle}, ${logOf(x.ex).length} serie)`).join(', ') : 'niente, è il primo'}.`,
+      `Ultime serie su questo esercizio: ${s.log.filter((l) => l.ex === it.ex).slice(-6).map((l) => `${l.date} ${fmt(l.kg)}x${l.reps}${l.rpe ? '@' + fmt(l.rpe) : ''}`).join(' · ') || 'nessuna'}`,
+      sessionExOf(s, it.ex, today())?.note ? `Sua nota di oggi su questo esercizio: "${sessionExOf(s, it.ex, today())!.note}"` : '',
+    ].filter(Boolean)
+    setIaBusy(true)
+    try {
+      const { delta, perche } = await aggiustaPeso(apiKey, righe.join('\n'))
+      const kg = round25(base * (1 + delta / 100))
+      setD(it, sp, i, { kg: String(kg) })
+      toast(delta === 0 ? `Confermo ${fmt(kg)} kg — ${perche}` : `${fmt(kg)} kg (${delta > 0 ? '+' : ''}${fmt(delta)}%) — ${perche}`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Il coach non ha risposto')
+    } finally { setIaBusy(false) }
   }
 
   const key = (ex: string, i: number) => ex + '#' + i
@@ -1721,6 +1754,8 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 </button>
                 {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
                 {done < sps.length && <button className="addset num" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13, letterSpacing: '.06em' }} onClick={() => setRpeCalc({ it, sp: sps[done], i: done })} title="Calcolatore RPE">RPE</button>}
+                {done < sps.length && <button className="addset" disabled={iaBusy} style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13 }}
+                  onClick={() => chiediPeso(it, sps[done], done)} title="Chiedi al coach di correggere il peso">{iaBusy ? '…' : '✨ Peso'}</button>}
                 <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => addSetRt(it, isExtra)}>＋ Serie</button>
                 <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>

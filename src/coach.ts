@@ -107,6 +107,23 @@ export const e1rmRpe = (kg: number, reps: number, rpe: number) => kg / rpePct(re
 /** Carico consigliato per centrare `reps` a quell'`rpe`, arrotondato a 2.5 kg. */
 export const caricoPerRpe = (max: number, reps: number, rpe: number) => round25(max * rpePct(reps, rpe))
 
+/** Legge lo sforzo prescritto: "@8" | "8" | "RPE 8" → 8; "RIR2" | "RIR 2" → 8 (RPE = 10 − RIR). */
+export function parseTarget(t?: string): number | null {
+  if (!t) return null
+  const rir = t.match(/rir\s*(\d+(?:[.,]\d)?)/i)
+  if (rir) { const v = 10 - +rir[1].replace(',', '.'); return v >= 1 && v <= 10 ? v : null }
+  const m = t.match(/(\d+(?:[.,]\d)?)/)
+  if (!m) return null
+  const v = +m[1].replace(',', '.')
+  return v >= 1 && v <= 10 ? v : null
+}
+
+/** Massimale stimato dallo storico: usa l'RPE dove c'è, altrimenti Epley. Serie a tempo escluse. */
+export function maxStimato(log: SetLog[], ex: string): number {
+  const v = log.filter((l) => l.ex === ex && !l.timed && l.kg > 0)
+  return v.length ? Math.max(...v.map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps)))) : 0
+}
+
 // !s.timed ovunque si stimi un massimale: su un plank da 60 secondi e1rm darebbe
 // un "1RM" da 3× il carico. Escluse qui, spariscono da proposta, record e festa PR.
 const dates = (log: SetLog[], ex: string) =>

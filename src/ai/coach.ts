@@ -23,6 +23,59 @@ Considera l'ordine (n) e i muscoli già colpiti nella seduta di oggi quando cons
 Se ti mancano dati per rispondere bene, dillo chiaramente e spiega cosa registrare nell'app.
 Non sei un medico: su infortuni e dolori rimanda a un professionista, senza fare diagnosi.`
 
+// ===== Aggiustamento del peso proposto =====
+// Il modello NON restituisce un peso: restituisce di QUANTO correggere quello che
+// l'aritmetica ha già calcolato. Il peso lo fa il codice e lo clampa alla banda, quindi
+// un'allucinazione può renderti la serie un po' leggera o pesante, mai metterti 300 kg
+// sotto lo squat. Qui niente strumenti: Gemini non ammette tool use e output strutturato
+// insieme, e il contesto che serve glielo passiamo già scritto.
+export const BANDA_PESO = 10 // percentuale massima di correzione, in più o in meno
+
+const SYSTEM_PESO = `Sei il preparatore di CARICO. Ti do il peso che l'aritmetica ha già calcolato
+(massimale stimato per la percentuale corrispondente all'RPE prescritto) e il contesto della giornata.
+Il tuo compito è UNO SOLO: dire di quanto va corretto, in percentuale, e perché.
+"delta" = numero da -${BANDA_PESO} a ${BANDA_PESO}. Zero significa che va bene così, ed è la risposta giusta
+tutte le volte che non hai motivi solidi per cambiare: non inventare aggiustamenti per sembrare utile.
+Pesa: readiness (sonno, energia, DOMS, stress), muscoli già allenati oggi e posizione nella seduta,
+recupero reale fra le serie, andamento recente dell'RPE sullo stesso esercizio.
+"perche" = UNA riga in italiano, concreta, massimo 90 caratteri, senza markdown.`
+
+export async function aggiustaPeso(apiKey: string, contesto: string): Promise<{ delta: number; perche: string }> {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PESO }] },
+      contents: [{ role: 'user', parts: [{ text: contesto }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: { delta: { type: 'number' }, perche: { type: 'string' } },
+          required: ['delta', 'perche'],
+        },
+      },
+    }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => null) as { error?: { message?: string } } | null
+    const msg = err?.error?.message ?? r.statusText
+    if (r.status === 400 && /api key/i.test(msg)) throw new Error('Chiave API non valida: controllala in Profilo → ⚙ → Coach IA.')
+    if (r.status === 429) throw new Error('Limite di richieste raggiunto: aspetta un minuto e riprova.')
+    throw new Error('Errore del coach: ' + msg)
+  }
+  const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+  let out: { delta?: unknown; perche?: unknown }
+  try { out = JSON.parse(testo) } catch { throw new Error('Risposta del coach non leggibile: riprova.') }
+  const d = Number(out.delta)
+  // il clamp è QUI, non nel prompt: le istruzioni si possono ignorare, questa riga no
+  return {
+    delta: Number.isFinite(d) ? Math.max(-BANDA_PESO, Math.min(BANDA_PESO, d)) : 0,
+    perche: String(out.perche ?? '').slice(0, 140),
+  }
+}
+
 // Una chiamata al coach: storia della chat + contesto del momento. Gira il loop tool-use:
 // Gemini chiama gli strumenti → noi eseguiamo le query → gli ridiamo i risultati → risposta finale.
 export async function chiamaCoach(history: ChatMsg[], apiKey: string, contesto: string): Promise<string> {
