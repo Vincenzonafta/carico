@@ -287,6 +287,9 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .efield.full { grid-column:1 / -1; }
 .editor > button { grid-column:1 / -1; }
 .editor > .full { grid-column:1 / -1; }
+/* stessa griglia dei campi, ma dentro le card della schermata esercizio: niente bordo/padding */
+.egrid { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+.egrid > .full, .egrid > button { grid-column:1 / -1; }
 
 .stag { display:inline-block; margin-left:8px; font-family:var(--mono); font-size:10px; letter-spacing:.07em;
   text-transform:uppercase; font-weight:700; color:var(--lime); background:rgba(201,249,78,.14); border-radius:999px; padding:3px 9px; vertical-align:middle; }

@@ -939,7 +939,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
             <>
               {/* il ‹ torna alla LISTA esercizi (setEdit null), non di due schermate.
                   Niente ordine/inizio-allenamento qui: quelli vivono nella lista del giorno. */}
-              <div className="bc" style={{ marginTop: 4 }}>
+              <div className="bc" style={{ marginTop: 18 }}>
                 <button className="back" onClick={() => setEdit(null)}>‹</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="crumb">{curDay(s)?.name} · esercizio {i + 1} di {items.length}</div>
@@ -971,56 +971,66 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                 <div><span className="fsico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" /></svg></span><b className="num">{mmss(it.rest)}</b><span className="l">Recupero</span></div>
               </div>
 
-                <div className="editor" style={{ marginTop: 12 }}>
+              {/* Sezioni distinte in card separate, come la vista allenamento: le serie da una
+                  parte, i dettagli dall'altra, l'azione distruttiva staccata in fondo. */}
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="cardh"><b>Serie e ripetizioni</b></div>
+                <div className="cardh-div" />
+                {!it.scheme ? (
+                  <div className="egrid">
+                    <div className="efield"><label>Serie</label><input type="number" value={it.sets} onChange={(e) => updItem(i, { sets: +e.target.value })} inputMode="numeric" /></div>
+                    <div className="efield"><label>{isTimed(it) ? 'Secondi' : 'Ripetizioni'}</label><input type="number" value={it.reps} onChange={(e) => updItem(i, { reps: +e.target.value })} inputMode="numeric" /></div>
+                    <button className="ghost full" onClick={() => customize(i)}>Personalizza ogni serie →</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="presets">
+                      {[['ramping', 'Ramping'], ['backoff', 'Back-off'], ['pyramid', 'Piramide'], ['drop', 'Drop set']].map(([k, l]) => (
+                        <button key={k} className="preset" onClick={() => applyPreset(i, k)}>{l}</button>
+                      ))}
+                    </div>
+                    <div className="setlist">
+                      <div className="slh"><span>#</span><span>Tipo</span><span>{isTimed(it) ? 'Sec' : 'Reps'}</span><span>Carico</span><span>Target</span><span></span></div>
+                      {it.scheme.map((sp, j) => (
+                        <div className={'slr st-' + sp.type} key={j}>
+                          <span className="sidx">{j + 1}</span>
+                          <select value={sp.type} onChange={(e) => updSet(i, j, { type: e.target.value as SetType })}>
+                            {SET_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                          </select>
+                          <input value={sp.reps} onChange={(e) => updSet(i, j, { reps: e.target.value })} placeholder="8" />
+                          <input value={sp.load ?? ''} onChange={(e) => updSet(i, j, { load: e.target.value })} placeholder="@80%" style={{ fontFamily: 'var(--sans)' }} />
+                          <input value={sp.target ?? ''} onChange={(e) => updSet(i, j, { target: e.target.value || undefined })} placeholder="@8" style={{ fontFamily: 'var(--sans)' }} />
+                          <span className="del" onClick={() => removeSet(i, j)}>✕</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <button className="ghost" onClick={() => addSet(i)}>+ Serie</button>
+                      <button className="ghost" onClick={() => toUniform(i)}>Torna a uniforme</button>
+                    </div>
+                  </>
+                )}
+                {/* isTimed indovina da sé plank & co: qui si conferma o si corregge */}
+                <label className="tswitch full" style={{ marginTop: 12 }}>
+                  <input type="checkbox" checked={isTimed(it)}
+                    onChange={(e) => updItem(i, { timed: e.target.checked })} />
+                  <span>Esercizio a tempo — le ripetizioni sono <b>secondi</b> e non fanno volume</span>
+                </label>
+              </div>
+
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="cardh"><b>Dettagli</b></div>
+                <div className="cardh-div" />
+                <div className="egrid">
                   <div className="efield full"><label>Recupero (sec)</label><input type="number" step="15" value={it.rest} onChange={(e) => updItem(i, { rest: +e.target.value })} inputMode="numeric" /></div>
                   <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, gomiti chiusi" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>RPE / RIR previsto</label><input type="text" value={it.target ?? ''} placeholder="es. @8 oppure RIR2 — vale per tutte le serie" onChange={(e) => updItem(i, { target: e.target.value || undefined })} /></div>
-                  {/* isTimed indovina da sé plank & co: qui si conferma o si corregge */}
-                  <label className="tswitch full">
-                    <input type="checkbox" checked={isTimed(it)}
-                      onChange={(e) => updItem(i, { timed: e.target.checked })} />
-                    <span>Esercizio a tempo — le ripetizioni sono <b>secondi</b> e non fanno volume</span>
-                  </label>
-
-                  {!it.scheme ? (
-                    <>
-                      <div className="efield"><label>Serie</label><input type="number" value={it.sets} onChange={(e) => updItem(i, { sets: +e.target.value })} inputMode="numeric" /></div>
-                      <div className="efield"><label>Ripetizioni</label><input type="number" value={it.reps} onChange={(e) => updItem(i, { reps: +e.target.value })} inputMode="numeric" /></div>
-                      <button className="ghost full" onClick={() => customize(i)}>Personalizza ogni serie →</button>
-                    </>
-                  ) : (
-                    <div className="full">
-                      <div className="presets">
-                        {[['ramping', 'Ramping'], ['backoff', 'Back-off'], ['pyramid', 'Piramide'], ['drop', 'Drop set']].map(([k, l]) => (
-                          <button key={k} className="preset" onClick={() => applyPreset(i, k)}>{l}</button>
-                        ))}
-                      </div>
-                      <div className="setlist">
-                        <div className="slh"><span>#</span><span>Tipo</span><span>Reps</span><span>Carico</span><span>Target</span><span></span></div>
-                        {it.scheme.map((sp, j) => (
-                          <div className={'slr st-' + sp.type} key={j}>
-                            <span className="sidx">{j + 1}</span>
-                            <select value={sp.type} onChange={(e) => updSet(i, j, { type: e.target.value as SetType })}>
-                              {SET_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-                            </select>
-                            <input value={sp.reps} onChange={(e) => updSet(i, j, { reps: e.target.value })} placeholder="8" />
-                            <input value={sp.load ?? ''} onChange={(e) => updSet(i, j, { load: e.target.value })} placeholder="@80%" style={{ fontFamily: 'var(--sans)' }} />
-                            <input value={sp.target ?? ''} onChange={(e) => updSet(i, j, { target: e.target.value || undefined })} placeholder="@8" style={{ fontFamily: 'var(--sans)' }} />
-                            <span className="del" onClick={() => removeSet(i, j)}>✕</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="row" style={{ marginTop: 8 }}>
-                        <button className="ghost" onClick={() => addSet(i)}>+ Serie</button>
-                        <button className="ghost" onClick={() => toUniform(i)}>Torna a uniforme</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* si torna all'elenco: restando qui la schermata punterebbe a un esercizio che non c'è più */}
-                  <button className="ghost full" style={{ color: 'var(--coral)' }} onClick={() => { removeItem(i); setEdit(null) }}>Rimuovi esercizio</button>
                 </div>
+              </div>
+
+              {/* si torna all'elenco: restando qui la schermata punterebbe a un esercizio che non c'è più */}
+              <button className="ghost full" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={() => { removeItem(i); setEdit(null) }}>Rimuovi esercizio</button>
             </>
         )
       })()}
