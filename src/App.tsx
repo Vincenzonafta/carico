@@ -889,10 +889,10 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       {items.length > 0 && edit == null && (
         <>
           <p className="hint">Tocca per modificare · tieni premuto e trascina per riordinare</p>
-          <DragList items={items} rowH={64} keyOf={(it) => it.ex}
+          <DragList items={items} rowH={78} keyOf={(it) => it.ex}
             render={(it) => (<>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <b style={{ fontSize: 15 }}>{it.ex}</b>{it.ss && <span className="stag">SS</span>}
+                <b style={{ fontSize: 16.5 }}>{it.ex}</b>{it.ss && <span className="stag">SS</span>}
                 <div className="meta num" style={{ marginTop: 3 }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}{it.note ? ' · ✎' : ''}</div>
               </div>
               <span className="chev">›</span>
@@ -1854,7 +1854,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           </div>
           <p className="hint">Tocca un esercizio per allenarti · tieni premuto e trascina per riordinare · readiness <b className="num">{r}</b></p>
 
-          <DragList items={plan} rowH={78} keyOf={(it) => it.ex}
+          <DragList items={plan} rowH={92} keyOf={(it) => it.ex}
             rowClass={(it) => {
               const pi = plan.indexOf(it)
               const exDone = Math.min(logOf(it.ex).length, specs(it).length) >= specs(it).length
