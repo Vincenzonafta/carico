@@ -442,6 +442,11 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .fhero svg { width:34px; height:34px; fill:none; stroke:var(--mut2); stroke-width:1.6; stroke-linecap:round; }
 /* col video vero l'altezza fissa taglierebbe l'inquadratura: qui comanda il video */
 .fvideo { height:auto; max-height:52vh; width:100%; display:block; object-fit:contain; background:#000; }
+.fvwrap { position:relative; }
+/* sopra il player, che altrimenti si prende tutti i tocchi */
+.fvedit { position:absolute; top:20px; right:10px; width:36px; height:36px; padding:0; z-index:2;
+  border-radius:11px; font-size:16px; background:rgba(5,7,9,.72); color:var(--chalk);
+  border:1px solid var(--hair); backdrop-filter:blur(6px); }
 .ftitle { font-size:24px; font-weight:800; letter-spacing:-.015em; line-height:1.15; margin:16px 2px 0; }
 .fstats { display:flex; margin-top:14px; padding:15px 8px; }
 .fstats > div { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; }

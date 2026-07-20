@@ -1311,7 +1311,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   // Video dell'esecuzione legato a (esercizio, oggi): per ora un link, così il coach può guardarlo.
   const addVideo = async (ex: string) => {
     const v = await promptDlg('Video esecuzione', [
-      { label: 'Link del video', value: sessionExOf(s, ex, today())?.video ?? '', placeholder: 'https://…' },
+      { label: 'Link del video — svuota per toglierlo', value: sessionExOf(s, ex, today())?.video ?? '', placeholder: 'https://…' },
     ])
     if (!v) return
     const url = (v[0] ?? '').trim()
@@ -1539,7 +1539,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             {/* ponytail: <video> con l'URL basta per i file diretti e per il futuro Supabase
                 Storage; l'upload dal telefono e i link YouTube verranno dopo. */}
             {sessNote?.video
-              ? <video className="fhero fvideo" src={sessNote.video} controls playsInline />
+              ? (
+                // col video il tocco se lo prendono i controlli del player: il comando per
+                // cambiarlo deve stare sopra, altrimenti resti senza via per modificarlo
+                <div className="fvwrap">
+                  <video className="fhero fvideo" src={sessNote.video} controls playsInline />
+                  <button className="fvedit" onClick={() => addVideo(it.ex)} title="Cambia o togli il video">✎</button>
+                </div>
+              )
               : (
                 <div className="fhero" onClick={() => addVideo(it.ex)}>
                   <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
@@ -1746,9 +1753,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
                 </button>
               )}
-              <button className="menurow" onClick={() => { const ex = menu.it.ex; setMenu(null); addVideo(ex) }}>
-                <span className="mi">▶</span>{sessionExOf(s, menu.it.ex, today())?.video ? 'Cambia video esecuzione' : 'Allega video esecuzione'}
-              </button>
               <button className="menurow" style={{ color: 'var(--coral)' }} onClick={() => removeEsercizio(menu.it.ex, menu.isExtra)}>
                 <span className="mi">✕</span>Togli da questo allenamento
               </button>
