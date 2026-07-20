@@ -229,6 +229,39 @@ export default function App() {
   }, [workoutStart])
   const startRest = (sec: number) => { ensureAudio(); setTotal(sec); setRest(sec) }
 
+  // Crono momentaneo, INDIPENDENTE dal recupero: convive con esso (seconda riga della barra).
+  // sec = null → cronometro che conta in su; sec > 0 → timer alla rovescia.
+  const [crono, setCrono] = useState<number | null>(null)
+  const cronoRef = useRef<{ at: number; dir: 1 | -1 } | null>(null) // istante di avvio (su) o di fine (giù)
+  const [cronoOpen, setCronoOpen] = useState(false)
+  const [cronoPick, setCronoPick] = useState(60)
+  const stopCrono = () => { cronoRef.current = null; setCrono(null) }
+  const startCrono = (sec: number | null) => {
+    ensureAudio()
+    cronoRef.current = sec == null ? { at: Date.now(), dir: 1 } : { at: Date.now() + sec * 1000, dir: -1 }
+    setCrono(sec ?? 0)
+  }
+  useEffect(() => {
+    if (crono == null) return
+    const step = () => {
+      const c = cronoRef.current
+      if (!c) return
+      if (c.dir === 1) setCrono(Math.floor((Date.now() - c.at) / 1000))
+      else {
+        const rem = Math.max(0, Math.round((c.at - Date.now()) / 1000))
+        if (rem <= 0) {
+          stopCrono()
+          if (sRef.current.settings.vibrate) navigator.vibrate?.(300)
+          if (sRef.current.settings.sound) beep()
+        } else setCrono(rem)
+      }
+    }
+    const id = setInterval(step, 500)
+    const onVis = () => { if (document.visibilityState === 'visible') step() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
+  }, [crono == null]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const r = readiness(s.checkin)
   const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
   const rColor = r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
@@ -241,12 +274,13 @@ export default function App() {
     return <div className="authgate"><div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div></div>
 
   return (
-    <div id="app" className={timer != null ? 'pad-timer' : ''}>
+    <div id="app" className={timer != null || crono != null ? 'pad-timer' : ''}>
       <header>
         <span className="mark">CARICO</span><span className="dot" />
         <span className="rpill num" style={{ color: rColor, background: `color-mix(in srgb, ${rColor} 14%, transparent)` }}>
           {r} · {rLabel}
         </span>
+        <button className="pen hpen" title="Cronometro / timer" onClick={() => setCronoOpen(true)}>⏱</button>
       </header>
 
       <InstallPrompt />
@@ -259,7 +293,13 @@ export default function App() {
       {tab === 'coach' && <Coach s={s} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
-      <TimerBar timer={timer} total={total} onTimer={setRest} onTotal={setTotal} />
+      {cronoOpen && <RestPicker value={cronoPick} onChange={setCronoPick}
+        title="Timer · scorri" done="Avvia timer ▼"
+        extra={<button className="ghost" onClick={() => { setCronoOpen(false); startCrono(null) }}>Cronometro ▲ conta in su</button>}
+        onDone={() => { setCronoOpen(false); if (cronoPick > 0) startCrono(cronoPick) }}
+        onClose={() => setCronoOpen(false)} />}
+      <TimerBar timer={timer} total={total} onTimer={setRest} onTotal={setTotal}
+        crono={crono} cronoUp={cronoRef.current?.dir === 1} onCronoStop={stopCrono} />
       <nav className={kbOpen ? 'kb' : ''}>
         {TABS.map((t) => (
           <a key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -904,34 +944,53 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
 }
 
 const mmss = (sec: number) => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
-// Durata allenamento: sotto l'ora min:sec, oltre i 60 min in "1h 05m"
-const durataFmt = (sec: number) => sec < 3600 ? mmss(sec) : `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}m`
+// Durata: sotto l'ora "45:30", oltre "1:05:30" — i secondi restano SEMPRE visibili
+const durataFmt = (sec: number) => sec < 3600 ? mmss(sec)
+  : `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
 
 // Popup timer flottante: recupero + crono, visibile ovunque sopra la nav
 // Popup flottante del recupero: appare solo mentre il timer va, visibile su ogni schermata
-function TimerBar({ timer, total, onTimer, onTotal }: {
+function TimerBar({ timer, total, onTimer, onTotal, crono, cronoUp, onCronoStop }: {
   timer: number | null; total: number
   onTimer: (v: number | null) => void; onTotal: (v: number) => void
+  crono: number | null; cronoUp: boolean; onCronoStop: () => void
 }) {
-  if (timer == null) return null
+  if (timer == null && crono == null) return null
   return (
     <div className="timer timerbar">
-      <div className="trow">
-        <div style={{ flex: 'none' }}>
-          <div className="tl">Recupero</div>
-          <div className="tv num">{mmss(timer)}</div>
+      {timer != null && (
+        <div className="trow">
+          <div style={{ flex: 'none' }}>
+            <div className="tl">Recupero</div>
+            <div className="tv num">{mmss(timer)}</div>
+          </div>
+          <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--lime)' }} /></div>
+          <button className="tbtn num" onClick={() => onTimer(Math.max(0, timer - 15))}>−15</button>
+          <button className="tbtn num" onClick={() => { onTimer(timer + 30); onTotal(Math.max(total, timer + 30)) }}>+30</button>
+          <button className="tbtn" onClick={() => onTimer(null)}>✕</button>
         </div>
-        <div className="bt tbar"><i style={{ width: Math.min(100, (timer / Math.max(1, total)) * 100) + '%', background: 'var(--lime)' }} /></div>
-        <button className="tbtn num" onClick={() => onTimer(Math.max(0, timer - 15))}>−15</button>
-        <button className="tbtn num" onClick={() => { onTimer(timer + 30); onTotal(Math.max(total, timer + 30)) }}>+30</button>
-        <button className="tbtn" onClick={() => onTimer(null)}>✕</button>
-      </div>
+      )}
+      {crono != null && (
+        <div className={'trow small' + (timer != null ? ' bordered' : '')}>
+          <div style={{ flex: 'none' }}>
+            <div className="tl">{cronoUp ? 'Cronometro' : 'Timer'}</div>
+            <div className="tv num">{durataFmt(crono)}</div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button className="tbtn" onClick={onCronoStop}>✕</button>
+        </div>
+      )}
     </div>
   )
 }
 
 // Rotella di scroll per il recupero: scorri e il valore si applica subito (stile picker iOS)
-function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v: number) => void; onClose: () => void }) {
+// title/done/extra/onDone servono al crono momentaneo, che riusa questa stessa rotella.
+// onDone separato da onClose: uscire dal foglio (✕ o sfondo) NON deve far partire nulla.
+function RestPicker({ value, onChange, onClose, title, done, extra, onDone }: {
+  value: number; onChange: (v: number) => void; onClose: () => void
+  title?: string; done?: string; extra?: React.ReactNode; onDone?: () => void
+}) {
   const ITEM = 46
   const steps = Array.from({ length: 41 }, (_, i) => i * 15) // 0:00 → 10:00
   const ref = useRef<HTMLDivElement>(null)
@@ -951,7 +1010,7 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
       <div className="sheet restsheet" onClick={(e) => e.stopPropagation()}>
         <div className="bc" style={{ margin: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="crumb" style={{ color: 'var(--lime)' }}>Recupero · scorri</div>
+            <div className="crumb" style={{ color: 'var(--lime)' }}>{title ?? 'Recupero · scorri'}</div>
             <div className="bt1 num">{mmss(val)}</div>
           </div>
           <button className="pen" onClick={onClose}>✕</button>
@@ -964,7 +1023,8 @@ function RestPicker({ value, onChange, onClose }: { value: number; onChange: (v:
             <div className="wheelpad" />
           </div>
         </div>
-        <button onClick={onClose}>Fatto</button>
+        {extra}
+        <button onClick={onDone ?? onClose} style={extra ? { marginTop: 8 } : undefined}>{done ?? 'Fatto'}</button>
       </div>
     </div>
   )

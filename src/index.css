@@ -1,8 +1,11 @@
 ﻿/* ============ tokens — contrasto alto ============ */
 :root {
-  --bg:#050709; --surf:#12161D; --surf2:#1D242E; --hair:#3A4552;
-  --chalk:#FFFFFF; --mut:#A9B5C5; --mut2:#7B8794;
-  --lime:#C9F94E; --lime-ink:#20300A; --teal:#31E0B4; --amber:#F5B84A; --coral:#FB6F84; --blue:#63A6F5;
+  /* superfici più staccate dallo sfondo e bordi più visibili: tutto "si vede" di più */
+  --bg:#050709; --surf:#171D26; --surf2:#252E3A; --hair:#54626F;
+  /* testi secondari alzati: il grigio spento era il primo colpevole della poca evidenza */
+  --chalk:#FFFFFF; --mut:#C6D0DC; --mut2:#9BA7B6;
+  /* palette ridotta: lime = accento, amber/coral = semantici, teal solo per i macro. Niente blu. */
+  --lime:#C9F94E; --lime-ink:#20300A; --teal:#31E0B4; --amber:#F5B84A; --coral:#FB6F84;
   --sans:"Segoe UI",system-ui,sans-serif; --mono:"Cascadia Code",ui-monospace,Consolas,monospace;
   /* scala tipografica: 11 micro · 13.5 secondario · 16 base · 22 titolo · 30 numeri */
   --fs-micro:11px; --fs-sec:13.5px; --fs-base:16px; --fs-title:22px; --fs-big:30px;
@@ -224,6 +227,8 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .bc .bt1 { font-size:var(--fs-title); font-weight:800; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pen { width:42px; height:42px; flex:none; padding:0; border-radius:13px; display:flex; align-items:center; justify-content:center;
   background:transparent; border:1px solid var(--hair); color:var(--mut); font-size:19px; }
+/* stesso bottone, taglia ridotta per stare nella top bar */
+.hpen { width:34px; height:34px; font-size:16px; border-radius:10px; margin-left:8px; }
 
 .navcard { display:flex; align-items:center; gap:12px; background:var(--surf); border:1px solid var(--hair);
   border-radius:16px; padding:15px; margin-bottom:10px; cursor:pointer; }
