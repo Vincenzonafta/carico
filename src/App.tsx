@@ -300,8 +300,8 @@ export default function App() {
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
       {cronoOpen && <RestPicker value={cronoPick} onChange={setCronoPick}
-        title="Timer · scorri" done="Avvia timer ▼"
-        extra={<button className="ghost" onClick={() => { setCronoOpen(false); startCrono(null) }}>Cronometro ▲ conta in su</button>}
+        title="Timer · scorri" done="Avvia timer"
+        extra={<button className="ghost" onClick={() => { setCronoOpen(false); startCrono(null) }}>Cronometro</button>}
         onDone={() => { setCronoOpen(false); if (cronoPick > 0) startCrono(cronoPick) }}
         onClose={() => setCronoOpen(false)} />}
       <TimerBar timer={timer} total={total} onTimer={setRest} onTotal={setTotal}
@@ -820,7 +820,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
           </div>
         )
       })}
-      <button className="ghost" onClick={addDay}>+ Nuovo giorno</button>
+      <button className="ghost" onClick={addDay} style={{marginTop:20}} >+ Nuovo giorno</button>
       {sc && (
         <button className="ghost" style={{ marginTop: 20, color: 'var(--coral)' }}
           onClick={async () => { if (await confirmDlg('Eliminare questa scheda?', sc?.name)) { mutate((d) => { d.schede.splice(s.activeScheda, 1); d.activeScheda = 0; d.activeDay = 0 }); setView('list') } }}>
