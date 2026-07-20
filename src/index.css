@@ -443,6 +443,12 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 /* col video vero l'altezza fissa taglierebbe l'inquadratura: qui comanda il video */
 .fvideo { height:auto; max-height:52vh; width:100%; display:block; object-fit:contain; background:#000; }
 .fvwrap { position:relative; }
+/* tasto video sulla riga della serie già fatta: spento finché non c'è niente da guardare */
+.svid { width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center;
+  border-radius:9px; border:1px solid var(--hair); color:var(--mut2); font-size:11px; cursor:pointer; }
+.svid.on { color:var(--lime); border-color:color-mix(in srgb, var(--lime) 45%, transparent);
+  background:color-mix(in srgb, var(--lime) 12%, transparent); }
+.vidfull { width:100%; max-height:60vh; margin-top:12px; border-radius:12px; background:#000; display:block; }
 /* sopra il player, che altrimenti si prende tutti i tocchi */
 .fvedit { position:absolute; top:20px; right:10px; width:36px; height:36px; padding:0; z-index:2;
   border-radius:11px; font-size:16px; background:rgba(5,7,9,.72); color:var(--chalk);

@@ -1257,6 +1257,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload } | null>(null)
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
+  const [playVid, setPlayVid] = useState<{ url: string; ex: string; i: number; title: string } | null>(null)
   // massimale di partenza per il calcolatore: usa l'RPE quando l'ho segnato, altrimenti Epley
   const maxOf = (ex: string) => {
     const ls = s.log.filter((l) => l.ex === ex)
@@ -1308,14 +1309,30 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { skip: true }) })
   }
 
-  // Video dell'esecuzione legato a (esercizio, oggi): per ora un link, così il coach può guardarlo.
-  const addVideo = async (ex: string) => {
-    const v = await promptDlg('Video esecuzione', [
-      { label: 'Link del video — svuota per toglierlo', value: sessionExOf(s, ex, today())?.video ?? '', placeholder: 'https://…' },
+  // Dimostrazione "come si esegue": legata al NOME dell'esercizio, vale per sempre e ovunque.
+  const setDemoVideo = async (ex: string) => {
+    const v = await promptDlg('Come si esegue ' + ex, [
+      { label: 'Link della dimostrazione — svuota per toglierla', value: (s.exVideo ?? {})[ex] ?? '', placeholder: 'https://…' },
     ])
     if (!v) return
     const url = (v[0] ?? '').trim()
-    setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { video: url || undefined }) })
+    const next = { ...(s.exVideo ?? {}) }
+    if (url) next[ex] = url; else delete next[ex]
+    setS({ ...s, exVideo: next })
+  }
+
+  // Video della SINGOLA serie: la tua esecuzione di quella serie, in quel giorno, così il
+  // coach guarda come l'hai fatta davvero. Indicizzato per numero di serie.
+  const setSerieVideo = async (ex: string, i: number) => {
+    const cur = sessionExOf(s, ex, today())?.setVideos ?? {}
+    const v = await promptDlg(`Video della serie ${i + 1}`, [
+      { label: 'Link del video — svuota per toglierlo', value: cur[i] ?? '', placeholder: 'https://…' },
+    ])
+    if (!v) return
+    const url = (v[0] ?? '').trim()
+    const next = { ...cur }
+    if (url) next[i] = url; else delete next[i]
+    setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { setVideos: Object.keys(next).length ? next : undefined }) })
   }
 
   // Ingranaggio: opzioni runtime sull'esercizio in corso
@@ -1515,7 +1532,8 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         const exDone = done >= sps.length
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
-        const sessNote = sessionExOf(s, it.ex, today()) // nota e video di OGGI su questo esercizio
+        const sessNote = sessionExOf(s, it.ex, today()) // nota e video-serie di OGGI su questo esercizio
+        const demoVideo = (s.exVideo ?? {})[it.ex] // dimostrazione, vale sempre
         const ss = inSS(idx)
         // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A.
         // Il pairing vale SOLO tra esercizi di scheda: mai scavalcare verso gli extra.
@@ -1538,19 +1556,22 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
             {/* ponytail: <video> con l'URL basta per i file diretti e per il futuro Supabase
                 Storage; l'upload dal telefono e i link YouTube verranno dopo. */}
-            {sessNote?.video
+            {/* Video DIMOSTRATIVO: come va eseguito l'esercizio. È dell'esercizio, non della
+                seduta — lo registri una volta e lo ritrovi in ogni scheda e ogni giorno.
+                I video delle tue serie stanno invece sulle righe delle serie, sotto. */}
+            {demoVideo
               ? (
                 // col video il tocco se lo prendono i controlli del player: il comando per
                 // cambiarlo deve stare sopra, altrimenti resti senza via per modificarlo
                 <div className="fvwrap">
-                  <video className="fhero fvideo" src={sessNote.video} controls playsInline />
-                  <button className="fvedit" onClick={() => addVideo(it.ex)} title="Cambia o togli il video">✎</button>
+                  <video className="fhero fvideo" src={demoVideo} controls playsInline />
+                  <button className="fvedit" onClick={() => setDemoVideo(it.ex)} title="Cambia o togli la dimostrazione">✎</button>
                 </div>
               )
               : (
-                <div className="fhero" onClick={() => addVideo(it.ex)}>
+                <div className="fhero" onClick={() => setDemoVideo(it.ex)}>
                   <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
-                  <span className="sm">Video esecuzione · tocca per allegarlo</span>
+                  <span className="sm">Come si esegue · tocca per allegare la dimostrazione</span>
                 </div>
               )}
             <div className="ftitle">{it.ex}</div>
@@ -1598,7 +1619,19 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                       <span className="sidx ok">✓</span>
                       <b className="num" style={{ fontSize: 14 }}>{fmt(logged.kg)} kg × {logged.reps}</b>
                       {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)} · RIR {fmt(10 - logged.rpe)}</span>}
-                      <span className="del" style={{ marginLeft: 'auto' }} onClick={() => uncheck(it.ex, i)}>✕</span>
+                      {/* video di QUESTA serie: sta sulla riga già fatta, che è la sola con
+                          spazio e l'unico momento in cui il video può esistere davvero */}
+                      {(() => {
+                        const url = (sessNote?.setVideos ?? {})[i]
+                        return (
+                          <span className={'svid' + (url ? ' on' : '')} style={{ marginLeft: 'auto' }}
+                            title={url ? 'Guarda il video della serie' : 'Allega il video di questa serie'}
+                            onClick={() => url
+                              ? setPlayVid({ url, ex: it.ex, i, title: `Serie ${i + 1} · ${it.ex}` })
+                              : setSerieVideo(it.ex, i)}>▶</span>
+                        )
+                      })()}
+                      <span className="del" onClick={() => uncheck(it.ex, i)}>✕</span>
                     </div>
                   )
                 }
@@ -1775,6 +1808,17 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           onPick={addExtra} onCreate={createAndAddExtra} />
       )}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
+      {playVid && (
+        <div className="overlay center" onClick={() => setPlayVid(null)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <b className="dt">{playVid.title}</b>
+            <video className="vidfull" src={playVid.url} controls playsInline autoPlay />
+            <button className="ghost" style={{ marginTop: 12 }}
+              onClick={() => { const p = playVid; setPlayVid(null); setSerieVideo(p.ex, p.i) }}>Cambia o togli</button>
+            <button className="ghost" style={{ marginTop: 8 }} onClick={() => setPlayVid(null)}>Chiudi</button>
+          </div>
+        </div>
+      )}
 
       {pr && (
         <div className="prfx" onClick={() => setPr(null)}>
@@ -2681,7 +2725,9 @@ function contestoCoach(s: State): string {
   righe.push(`Ultime serie registrate: ${s.log.slice(-8).map((l) => `${l.date} ${l.ex} ${fmt(l.kg)}x${l.reps}${l.rpe ? `@${fmt(l.rpe)}` : ''}`).join(' · ') || 'nessuna'}`)
   // Feedback scritti di suo pugno durante gli allenamenti: è la voce che i numeri non hanno.
   const note = (s.sessionEx ?? []).filter((x) => x.note).slice(-8)
-  if (note.length) righe.push(`Sue note dagli allenamenti: ${note.map((x) => `${x.date} ${x.ex}: "${x.note}"${x.video ? ' (ha allegato un video dell\'esecuzione)' : ''}`).join(' · ')}`)
+  if (note.length) righe.push(`Sue note dagli allenamenti: ${note.map((x) => `${x.date} ${x.ex}: "${x.note}"`).join(' · ')}`)
+  const vid = (s.sessionEx ?? []).filter((x) => x.setVideos && Object.keys(x.setVideos).length).slice(-6)
+  if (vid.length) righe.push(`Ha registrato le sue serie (puoi chiedergli di descriverti l'esecuzione): ${vid.map((x) => `${x.date} ${x.ex} serie ${Object.keys(x.setVideos!).map((n) => +n + 1).join(',')}`).join(' · ')}`)
   return righe.join('\n')
 }
 

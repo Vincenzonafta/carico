@@ -12,9 +12,11 @@ export type PlanItem = { ex: string; sets: number; reps: number; rest: number; m
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 // Cosa è successo a un esercizio in UNA data, oltre alle serie registrate: saltato solo oggi,
-// nota personale di quel giorno, video dell'esecuzione. Vive per data come extras, così la
-// SCHEDA resta intatta: lì ci sono solo le note generali, valide sempre.
-export type SessionEx = { date: string; ex: string; skip?: boolean; note?: string; video?: string }
+// nota personale di quel giorno, e i video delle SINGOLE SERIE (indice serie → url).
+// Vive per data come extras, così la SCHEDA resta intatta: lì ci sono solo le note generali.
+// NB: il video dimostrativo "come si esegue" NON sta qui: è in State.exVideo, perché vale
+// sempre e per ogni scheda in cui l'esercizio compare, non solo per la seduta di oggi.
+export type SessionEx = { date: string; ex: string; skip?: boolean; note?: string; setVideos?: Record<number, string> }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number; ore?: number }
 export type MealType = 'colazione' | 'pranzo' | 'cena' | 'spuntino'
 export type Meal = { date: string; type: MealType; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }
@@ -28,6 +30,10 @@ export type State = {
   customExercises: Exercise[]
   extras: { date: string; item: PlanItem }[]
   sessionEx: SessionEx[]
+  // Video dimostrativo per NOME esercizio: "come va fatto". Sta qui e non sul PlanItem
+  // perché è una proprietà dell'esercizio in sé — se la panca compare in tre schede,
+  // la dimostrazione è la stessa e la registri una volta sola.
+  exVideo: Record<string, string>
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
@@ -514,7 +520,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [],
+    customExercises: [], extras: [], sessionEx: [], exVideo: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -545,7 +551,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [],
+    customExercises: [], extras: [], sessionEx: [], exVideo: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },

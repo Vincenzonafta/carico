@@ -155,7 +155,8 @@ export function pastiOggiAggiornati(
 export function configSalvata(st: Record<string, unknown>) {
   const dati = {
     schede: st.schede, activeScheda: st.activeScheda, activeDay: st.activeDay,
-    customExercises: st.customExercises, extras: st.extras, sessionEx: st.sessionEx, target: st.target,
+    customExercises: st.customExercises, extras: st.extras, sessionEx: st.sessionEx,
+    exVideo: st.exVideo, target: st.target,
     mealPlan: st.mealPlan, goal: st.goal, settings: st.settings, customFoods: st.customFoods,
   }
   const last = q[q.length - 1]
