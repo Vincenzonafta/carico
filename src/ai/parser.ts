@@ -2,8 +2,7 @@
 // Structured output (responseSchema): Gemini NON può produrre un formato diverso dal nostro.
 // A valle c'è comunque l'ANTEPRIMA obbligatoria: si importa solo dopo conferma dell'utente.
 import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType } from '../coach'
-
-const MODEL = 'gemini-3.5-flash'
+import { MODEL } from './model'
 
 const PROMPT = `Estrai TUTTO il programma di allenamento da questo documento (tabella, foto o testo, in qualsiasi lingua).
 

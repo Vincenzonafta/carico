@@ -4,12 +4,11 @@
 // Tool use: Gemini può chiamare gli strumenti (src/data/tools.ts) per leggere i dati REALI
 // dal database — storico con recuperi misurati, seduta in corso, check-in, nutrizione.
 import { TOOL_DECLS, eseguiTool } from '../data/tools'
+import { MODEL } from './model'
 
 export type ChatMsg = { role: 'user' | 'model'; text: string }
 type Part = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } }
 type Content = { role: string; parts: Part[] }
-
-const MODEL = 'gemini-2.5-flash'
 
 const SYSTEM = `Sei il coach di CARICO, un'app italiana di allenamento in palestra e nutrizione.
 Sei un preparatore esperto: allenamento coi pesi (ipertrofia e forza), programmazione, recupero, alimentazione sportiva.

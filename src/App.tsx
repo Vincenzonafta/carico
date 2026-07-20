@@ -608,6 +608,12 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   const [aiNota, setAiNota] = useState(s.settings.schedaNota ?? '')
   const [aiFix, setAiFix] = useState('')
   const aiFile = useRef<File | null>(null) // tenuto da parte per poter ripassare lo stesso file
+  // dimostrazione dell'esercizio caricabile anche da qui, non solo durante l'allenamento
+  const { pick: pickVideo, input: videoInput, attesa: videoAttesa } = useVideoUpload<string>((path, ex) => {
+    const prima = (s.exVideo ?? {})[ex]
+    mutate((d) => { d.exVideo = { ...(d.exVideo ?? {}), [ex]: path } })
+    if (prima) void deleteVideo(prima)
+  })
   const [view, setView] = useState<'list' | 'scheda' | 'day'>('list')
   const [picker, setPicker] = useState(false)
   useTop(view)
@@ -901,22 +907,54 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
             onReorder={(order) => mutate((d) => { const dd = d.schede[s.activeScheda].days[s.activeDay]; dd.items = order.map((i2) => dd.items[i2]) })} />
         </>
       )}
-      {items.length > 0 && edit != null && (
-      <div className="card" style={{ padding: '4px 12px' }}>
-        {items.map((it, i) => {
-          const tag = schemeTag(it)
-          return (
-            <div key={i}>
-              <div className="set" onClick={() => setEdit(edit === i ? null : i)} style={{ cursor: 'pointer' }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ fontSize: 13.5 }}>{it.ex}</b>{tag && <span className="stag">{tag}</span>}{it.ss && items[i + 1] && <span className="stag">Superset con {items[i + 1].ex}</span>}
-                  <div className="meta num">{it.muscle} · {schemeSummary(it)} · rec {mmss(it.rest)}</div>
-                  {it.note && <div className="note">✎ {it.note}</div>}
+      {/* Schermata dedicata all'esercizio: stesse card della vista allenamento (video
+          dimostrativo, titolo grande, statistiche) e sotto i campi da modificare.
+          Prima era una fisarmonica dentro l'elenco: si perdeva il contesto e non c'era
+          posto per il video. */}
+      {items.length > 0 && edit != null && items[edit] && (() => {
+        const i = edit
+        const it = items[i]
+        const tag = schemeTag(it)
+        const demo = (s.exVideo ?? {})[it.ex]
+        return (
+            <>
+              <div className="bc" style={{ marginTop: 4 }}>
+                <button className="back" onClick={() => setEdit(null)}>‹</button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="crumb">{curDay(s)?.name} · esercizio {i + 1} di {items.length}</div>
+                  <div className="bt1">Modifica</div>
                 </div>
-                <span className="del" style={{ marginLeft: 'auto' }}>{edit === i ? '▾' : '▸'}</span>
+                <div className="row" style={{ gap: 6, flex: 'none' }}>
+                  <button className="pen" onClick={() => moveItem(i, -1)} disabled={i === 0}>↑</button>
+                  <button className="pen" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}>↓</button>
+                </div>
               </div>
-              {edit === i && (
-                <div className="editor">
+
+              {demo
+                ? (
+                  <div className="fvwrap">
+                    <Video className="fhero fvideo" src={demo} />
+                    <button className="fvedit" onClick={() => pickVideo(it.ex)} title="Sostituisci la dimostrazione">✎</button>
+                  </div>
+                )
+                : (
+                  <div className="fhero" onClick={() => pickVideo(it.ex)}>
+                    <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
+                    <span className="sm">Come si esegue · tocca per caricare la dimostrazione</span>
+                  </div>
+                )}
+              <div className="ftitle">{it.ex}</div>
+              <div className="crumb" style={{ margin: '4px 2px 0' }}>
+                <i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}
+                {tag ? ' · ' + tag : ''}{it.ss && items[i + 1] ? ' · superset con ' + items[i + 1].ex : ''}
+              </div>
+              <div className="card fstats">
+                <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{itemSetCount(it)}</b><span className="l">Serie</span></div>
+                <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span><b className="num">{itemReps(it)}{isTimed(it) ? 's' : ''}</b><span className="l">{isTimed(it) ? 'Durata' : 'Ripetizioni'}</span></div>
+                <div><span className="fsico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" /></svg></span><b className="num">{mmss(it.rest)}</b><span className="l">Recupero</span></div>
+              </div>
+
+                <div className="editor" style={{ marginTop: 12 }}>
                   <div className="efield"><label>Recupero (sec)</label><input type="number" step="15" value={it.rest} onChange={(e) => updItem(i, { rest: +e.target.value })} inputMode="numeric" /></div>
                   <div className="efield"><label>Ordine</label>
                     <div className="row" style={{ gap: 6 }}>
@@ -969,16 +1007,15 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                     </div>
                   )}
 
-                  <button className="ghost full" style={{ color: 'var(--coral)' }} onClick={() => removeItem(i)}>Rimuovi esercizio</button>
+                  {/* si torna all'elenco: restando qui la schermata punterebbe a un esercizio che non c'è più */}
+                  <button className="ghost full" style={{ color: 'var(--coral)' }} onClick={() => { removeItem(i); setEdit(null) }}>Rimuovi esercizio</button>
                 </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-      )}
+            </>
+        )
+      })()}
 
-      <button style={{ marginTop: 12 }} className="ghost" onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>
+      {videoInput}{videoAttesa}
+      {edit == null && <button style={{ marginTop: 12 }} className="ghost" onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>}
       {picker && (
         <ExPicker lib={lib} title={curDay(s)?.name ?? ''} onClose={() => setPicker(false)}
           onPick={addItemByName} onCreate={createAndAdd} />
@@ -1219,6 +1256,39 @@ function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: numb
   )
 }
 
+// Dove finisce il video scelto: la dimostrazione dell'esercizio o una singola serie.
+type VidTarget = { kind: 'demo'; ex: string } | { kind: 'serie'; ex: string; i: number }
+
+// Caricamento video condiviso fra la vista allenamento e l'editor della scheda: un solo
+// <input file> nascosto (galleria e fotocamera le offre il telefono) e il bersaglio tenuto
+// in un ref finché l'utente sceglie, così il chiamante non deve ricostruire ogni volta il giro.
+function useVideoUpload<T>(salva: (path: string, target: T) => void) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const target = useRef<T | null>(null)
+  const [busy, setBusy] = useState(false)
+  const pick = (t: T) => { target.current = t; fileRef.current?.click() }
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // senza il reset, riscegliere lo stesso file non farebbe scattare onChange
+    const t = target.current; target.current = null
+    if (!file || t == null) return
+    setBusy(true)
+    try { salva(await uploadVideo(file), t); toast('Video caricato') }
+    catch (err) { toast(err instanceof Error ? err.message : 'Caricamento non riuscito') }
+    finally { setBusy(false) }
+  }
+  const input = <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={onFile} />
+  const attesa = busy ? (
+    <div className="overlay center">
+      <div className="dlg" style={{ textAlign: 'center' }}>
+        <b className="dt">Carico il video…</b>
+        <p className="sm mut" style={{ margin: '8px 0 0' }}>Con la rete del telefono può volerci un po'. Non chiudere l'app.</p>
+      </div>
+    </div>
+  ) : null
+  return { pick, busy, input, attesa }
+}
+
 // I file nel bucket privato non hanno un link fisso: se ne chiede uno firmato quando
 // si guarda il video. Perciò il <video> vive qui dentro, con i suoi stati di attesa.
 function Video({ src, className }: { src: string; className?: string }) {
@@ -1364,37 +1434,19 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { skip: true }) })
   }
 
-  // ===== VIDEO: un solo <input file> nascosto per tutti i punti da cui si carica =====
-  // Il selettore del telefono offre da sé galleria e fotocamera; a noi basta sapere
-  // DOVE finirà il file, e quello lo teniamo in un ref finché l'utente sceglie.
-  const fileRef = useRef<HTMLInputElement>(null)
-  const vidTarget = useRef<{ kind: 'demo'; ex: string } | { kind: 'serie'; ex: string; i: number } | null>(null)
-  const [upBusy, setUpBusy] = useState(false)
-  const pickVideo = (t: NonNullable<typeof vidTarget.current>) => { vidTarget.current = t; fileRef.current?.click() }
-
-  const onVideoFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // senza il reset, riscegliere lo stesso file non farebbe scattare onChange
-    const t = vidTarget.current; vidTarget.current = null
-    if (!file || !t) return
-    setUpBusy(true)
-    try {
-      const path = await uploadVideo(file)
-      if (t.kind === 'demo') {
-        const prima = (s.exVideo ?? {})[t.ex]
-        setS({ ...s, exVideo: { ...(s.exVideo ?? {}), [t.ex]: path } })
-        if (prima) void deleteVideo(prima) // sostituito: il vecchio file non serve più
-      } else {
-        const cur = sessionExOf(s, t.ex, today())?.setVideos ?? {}
-        const prima = cur[t.i]
-        setS({ ...s, sessionEx: setSessionEx(s, t.ex, today(), { setVideos: { ...cur, [t.i]: path } }) })
-        if (prima) void deleteVideo(prima)
-      }
-      toast('Video caricato')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Caricamento non riuscito')
-    } finally { setUpBusy(false) }
-  }
+  // Video: la meccanica sta nell'hook, qui resta solo dove salvare il percorso.
+  const { pick: pickVideo, input: videoInput, attesa: videoAttesa } = useVideoUpload<VidTarget>((path, t) => {
+    if (t.kind === 'demo') {
+      const prima = (s.exVideo ?? {})[t.ex]
+      setS({ ...s, exVideo: { ...(s.exVideo ?? {}), [t.ex]: path } })
+      if (prima) void deleteVideo(prima) // sostituito: il vecchio file non serve più
+    } else {
+      const cur = sessionExOf(s, t.ex, today())?.setVideos ?? {}
+      const prima = cur[t.i]
+      setS({ ...s, sessionEx: setSessionEx(s, t.ex, today(), { setVideos: { ...cur, [t.i]: path } }) })
+      if (prima) void deleteVideo(prima)
+    }
+  })
 
   const removeDemoVideo = async (ex: string) => {
     if (!(await confirmDlg('Togliere la dimostrazione?', ex))) return
@@ -1952,16 +2004,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         <ExPicker lib={lib} title="Alla seduta di oggi" onClose={() => setPicker(false)}
           onPick={addExtra} onCreate={createAndAddExtra} />
       )}
-      {/* uno solo per tutta la schermata: galleria e fotocamera le offre il telefono */}
-      <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={onVideoFile} />
-      {upBusy && (
-        <div className="overlay center">
-          <div className="dlg" style={{ textAlign: 'center' }}>
-            <b className="dt">Carico il video…</b>
-            <p className="sm mut" style={{ margin: '8px 0 0' }}>Con la rete del telefono può volerci un po'. Non chiudere l'app.</p>
-          </div>
-        </div>
-      )}
+      {videoInput}{videoAttesa}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {playVid && (
         <div className="overlay center" onClick={() => setPlayVid(null)}>
