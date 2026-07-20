@@ -15,7 +15,26 @@ REGOLE DI TRADUZIONE:
 - "rest" = recupero in SECONDI ("75/90" → 90; "1'30" → 90; "2 min" → 120). Se non indicato: 90.
 - Serie DIVERSE tra loro (es. "10, 10, 8, 8" o percentuali/carichi diversi per serie) → compila "scheme" con una voce per ogni serie.
 - Percentuali del massimale ("87%", "@80%") → "load" della serie (formato "@87%").
-- Target di sforzo (RPE "@8", "RIR 2") → "target" della serie (formato "@8" oppure "RIR2").
+
+NOTAZIONE ITALIANA DA POWERLIFTING (attenzione, è la fonte di errore più comune):
+- "10*3s" significa 10 RIPETIZIONI per 3 SERIE: la "s" sta per serie e l'ordine è REPS*SERIE,
+  NON serie×reps. Quindi "10*3s" → reps=10, sets=3. Allo stesso modo "8*4s" → reps=8, sets=4.
+- "@8" è un RPE (sforzo), MAI un carico. NON PERDERLO MAI:
+  · se lo stesso RPE vale per tutte le serie dell'esercizio → campo "target" DELL'ESERCIZIO (es. "@8");
+  · se cambia tra gruppi di serie → "target" della singola voce di "scheme".
+  "RIR 2" si scrive "RIR2". Un esercizio con un RPE scritto nel documento DEVE avere "target" compilato,
+  a livello di esercizio o di scheme.
+- ";" separa prescrizioni DIVERSE dello stesso esercizio → una voce di "scheme" per ciascuna.
+  Esempio: "3 @6 ; 3*3s" → scheme: [{reps:"3", target:"@6"}, {reps:"3"}, {reps:"3"}, {reps:"3"}]
+  (prima una singola da 3 reps @6, poi 3 serie da 3).
+  Esempio: "87% 2*5s" → 5 serie da 2 reps con load "@87%".
+- "F2''" = fermo di 2 secondi, "Iso3''" = isometria 3 secondi, "Salita lenta (3'')", "ist" = isometria:
+  vanno tutti nel campo "tempo" dell'esercizio, non nelle note.
+- "→" o "⇒" fra due prescrizioni dello STESSO esercizio = serie in stripping/scalata:
+  "scheme" con le due voci, la seconda con type "drop".
+- Se il documento riporta i massimali dell'atleta (es. "190 · 100 · 220" vicino a squat/panca/stacco),
+  scrivili nella "note" del rispettivo esercizio come "massimale <n> kg": servono a interpretare le percentuali.
+- SQUAT → Gambe; PANCA/panca piana → Petto; STACCO/stacco da terra → Schiena.
 - Tempi, fermi e isometrie ("Iso3''", "fermo 2'' al petto", "3-1-1", "salita lenta") → campo "tempo" dell'esercizio.
 - SUPERSET (esercizi uniti da "+" o indicati in coppia) → DUE esercizi consecutivi separati, con "ss": true sul PRIMO dei due.
 - Esercizi a tempo (plank 60'') → sets = numero di serie, reps = secondi, e in "note" scrivi "durata in secondi".
@@ -49,6 +68,7 @@ const SCHEMA = {
                   muscle: { type: 'string' },
                   note: { type: 'string' },
                   tempo: { type: 'string' },
+                  target: { type: 'string' }, // RPE/RIR valido per tutte le serie ("@8", "RIR2")
                   ss: { type: 'boolean' },
                   scheme: {
                     type: 'array',
@@ -155,6 +175,7 @@ function sanItem(it: Record<string, unknown>): PlanItem | null {
     rest: num(it.rest, 0, 900, 90),
     note: it.note ? String(it.note) : undefined,
     tempo: it.tempo ? String(it.tempo) : undefined,
+    target: it.target ? String(it.target) : undefined,
     ss: it.ss === true ? true : undefined,
     scheme,
   }

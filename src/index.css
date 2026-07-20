@@ -157,17 +157,30 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   background:var(--surf2); border-radius:999px; padding:6px 12px; flex:none; margin-left:auto; }
 .exprog.ok { color:var(--lime); background:rgba(201,249,78,.14); }
 
-.wrow { display:grid; grid-template-columns:28px 1fr 12px 1fr 74px 52px; gap:7px; align-items:center; padding:8px 0; }
-.wrow input, .wrow select { padding:11px 6px; font-size:16px; border-radius:10px; text-align:center; min-width:0; }
-.wrow select { padding:11px 2px; font-size:13.5px; }
+/* 7 colonne: nr · kg · × · reps · RPE · RIR · ✓ — stretta ma deve stare su un telefono da 375px */
+.wrow { display:grid; grid-template-columns:26px 1fr 8px 1fr 50px 50px 48px; gap:5px; align-items:center; padding:8px 0; }
+.wrow input, .wrow select { padding:11px 4px; font-size:15px; border-radius:10px; text-align:center; min-width:0; }
+.wrow select { padding:11px 1px; font-size:13px; -webkit-appearance:none; appearance:none; }
 .wrow .x { text-align:center; color:var(--mut2); }
 .wrow.pending { opacity:.4; }
 .wrow.active { opacity:1; }
-.wrow .chk { width:52px; padding:12px 0; border-radius:11px; font-size:19px; font-weight:800;
+.wrow .chk { width:48px; padding:12px 0; border-radius:11px; font-size:19px; font-weight:800;
   background:var(--surf2); color:var(--mut2); }
 .wrow.active .chk { background:var(--lime); color:var(--lime-ink); }
 .wsub { grid-column:2 / -1; margin-top:-2px; letter-spacing:.08em; }
 .wrow.done { display:flex; gap:11px; align-items:center; padding:9px 0; }
+/* ===== calcolatore RPE ===== */
+.rpein { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; }
+.rpein label { display:block; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em;
+  text-transform:uppercase; color:var(--mut); margin-bottom:5px; text-align:center; }
+.rpein input, .rpein select { text-align:center; padding:11px 4px; font-size:15px; }
+.rpegrid { display:grid; grid-template-columns:auto repeat(5, 1fr); gap:4px; align-items:center; }
+.rpegrid .rh { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--mut2);
+  text-align:center; white-space:nowrap; }
+.rpegrid .rc { width:auto; padding:9px 2px; font-size:13.5px; font-weight:700; border-radius:9px;
+  background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); }
+.rpegrid .rc:active { background:var(--lime); color:var(--lime-ink); }
+
 .hint { font-family:var(--mono); font-size:12.5px; color:var(--mut); margin:10px 2px 2px; }
 .hint b { color:var(--lime); font-weight:700; }
 
@@ -417,7 +430,7 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .cardh-div { height:1px; background:var(--hair); margin:11px 0; }
 
 /* intestazioni colonne della card Serie */
-.serhead { display:grid; grid-template-columns:28px 1fr 12px 1fr 74px 52px; gap:7px; margin:10px 0 0;
+.serhead { display:grid; grid-template-columns:26px 1fr 8px 1fr 50px 50px 48px; gap:5px; margin:10px 0 0;
   font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut2); text-align:center; }
 .serhead span { white-space:nowrap; overflow:hidden; }
 .ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
+  e1rmRpe, caricoPerRpe, round25,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -280,7 +281,12 @@ export default function App() {
         <span className="rpill num" style={{ color: rColor, background: `color-mix(in srgb, ${rColor} 14%, transparent)` }}>
           {r} · {rLabel}
         </span>
-        <button className="pen hpen" title="Cronometro / timer" onClick={() => setCronoOpen(true)}>⏱</button>
+        <button className="pen hpen" title="Cronometro / timer" onClick={() => setCronoOpen(true)}>
+          {/* cronometro disegnato: corona, corpo, lancette, pulsante laterale */}
+          <svg viewBox="0 0 24 24" className="misvg" style={{ width: 19, height: 19 }}>
+            <path d="M9.5 2.5h5" /><circle cx="12" cy="13.5" r="7.6" /><path d="M12 9.6v4l2.7 1.7" /><path d="M18.6 6.3l1.3-1.3" />
+          </svg>
+        </button>
       </header>
 
       <InstallPrompt />
@@ -883,6 +889,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                   </div>
                   <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, gomiti chiusi" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
+                  <div className="efield full"><label>RPE / RIR previsto</label><input type="text" value={it.target ?? ''} placeholder="es. @8 oppure RIR2 — vale per tutte le serie" onChange={(e) => updItem(i, { target: e.target.value || undefined })} /></div>
 
                   {!it.scheme ? (
                     <>
@@ -944,6 +951,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
 }
 
 const mmss = (sec: number) => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
+const RPE_VALS = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10] // RIR = 10 − RPE, quindi 4 … 0
 // Durata: sotto l'ora "45:30", oltre "1:05:30" — i secondi restano SEMPRE visibili
 const durataFmt = (sec: number) => sec < 3600 ? mmss(sec)
   : `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
@@ -1168,6 +1176,64 @@ function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: numb
   )
 }
 
+// Calcolatore RPE, nei due versi che servono in palestra:
+// sopra da una serie al massimale stimato, sotto dal massimale al carico per ogni reps@RPE.
+function RpeCalc({ ex, kg0, reps0, max0, onUse, onClose }: {
+  ex: string; kg0: number; reps0: number; max0: number
+  onUse: (kg: number) => void; onClose: () => void
+}) {
+  const [kg, setKg] = useState(kg0 ? fmt(kg0) : '')
+  const [reps, setReps] = useState(String(reps0 || 3))
+  const [rpe, setRpe] = useState('8')
+  const nKg = parseFloat(kg.replace(',', '.')) || 0
+  const nReps = parseInt(reps, 10) || 0
+  const daSerie = nKg && nReps ? e1rmRpe(nKg, nReps, +rpe) : 0
+  const max = daSerie || max0 // la serie compilata vince sullo storico
+  const COLS = [6, 7, 8, 9, 10]
+  const ROWS = [1, 2, 3, 5, 8, 10]
+  return (
+    <div className="overlay center" onClick={onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <b className="dt">Calcolatore RPE</b>
+        <p className="sm mut" style={{ margin: '3px 0 12px' }}>{ex}</p>
+        <div className="rpein">
+          <div><label>Peso (kg)</label>
+            <input value={kg} onChange={(e) => setKg(e.target.value)} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" /></div>
+          <div><label>Reps</label>
+            <input value={reps} onChange={(e) => setReps(e.target.value)} onFocus={(e) => e.target.select()} inputMode="numeric" /></div>
+          <div><label>RPE</label>
+            <select value={rpe} onChange={(e) => setRpe(e.target.value)}>
+              {RPE_VALS.map((v) => <option key={v} value={v}>{fmt(v)}</option>)}
+            </select></div>
+        </div>
+        <div style={{ textAlign: 'center', margin: '14px 0 2px' }}>
+          <span className="sm mut">massimale stimato </span>
+          <b className="num" style={{ fontSize: 24, color: 'var(--lime)' }}>{max ? fmt(round25(max)) + ' kg' : '—'}</b>
+        </div>
+        <p className="sm mut" style={{ textAlign: 'center', margin: 0, fontSize: 12 }}>
+          {daSerie ? 'da questa serie' : max0 ? 'dal tuo storico — compila la serie per ricalcolarlo' : 'compila la serie qui sopra'}
+        </p>
+        {max > 0 && <>
+          <p className="sm mut" style={{ margin: '16px 0 7px' }}>Carico per centrare reps @ RPE — tocca per usarlo</p>
+          <div className="rpegrid">
+            <span />
+            {COLS.map((c) => <span key={c} className="rh">@{c}</span>)}
+            {ROWS.flatMap((r) => [
+              <span key={'h' + r} className="rh">{r} rip.</span>,
+              ...COLS.map((c) => (
+                <button key={r + '-' + c} className="rc num" onClick={() => onUse(caricoPerRpe(max, r, c))}>
+                  {fmt(caricoPerRpe(max, r, c))}
+                </button>
+              )),
+            ])}
+          </div>
+        </>}
+        <button className="ghost" style={{ marginTop: 15 }} onClick={onClose}>Chiudi</button>
+      </div>
+    </div>
+  )
+}
+
 function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, timerActive }: {
   s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
   workoutStart: number | null; setWorkoutStart: (v: number | null) => void; timerActive: boolean
@@ -1179,6 +1245,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const lib = [...EXERCISES, ...s.customExercises]
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload } | null>(null)
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
+  const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
+  // massimale di partenza per il calcolatore: usa l'RPE quando l'ho segnato, altrimenti Epley
+  const maxOf = (ex: string) => {
+    const ls = s.log.filter((l) => l.ex === ex)
+    return ls.length ? Math.max(...ls.map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps)))) : 0
+  }
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1295,8 +1367,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const r = readiness(s.checkin)
 
   // serie pianificate: schema personalizzato o uniforme
+  // il target dell'esercizio ("@8") vale per ogni serie, salvo quelle che ne hanno uno proprio
   const specs = (it: PlanItem): SetSpec[] =>
-    it.scheme ?? Array.from({ length: it.sets }, () => ({ type: 'normal' as SetType, reps: String(it.reps) }))
+    it.scheme?.map((sp) => (sp.target || !it.target ? sp : { ...sp, target: it.target }))
+    ?? Array.from({ length: it.sets }, () => ({ type: 'normal' as SetType, reps: String(it.reps), target: it.target }))
 
   const totalPlanned = items.reduce((a, it) => a + specs(it).length, 0)
   const totalDone = items.reduce((a, it) => a + Math.min(logOf(it.ex).length, specs(it).length), 0)
@@ -1451,7 +1525,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               <span className="sm">Video esecuzione · in arrivo</span>
             </div>
             <div className="ftitle">{it.ex}</div>
-            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}</div>
+            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}{it.target ? ' · ' + it.target : ''}</div>
 
             <div className="card fstats">
               <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>
@@ -1480,7 +1554,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
               <div className="cardh"><b>Serie</b></div>
-              <div className="serhead"><span /><span>Peso (kg)</span><span /><span>Reps</span><span>RPE</span><span /></div>
+              <div className="serhead"><span /><span>Peso (kg)</span><span /><span>Reps</span><span>RPE</span><span>RIR</span><span /></div>
               {sps.map((sp, i) => {
                 if (i < done) {
                   const logged = logOf(it.ex)[i]
@@ -1501,9 +1575,16 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                     <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
                     <span className="x">×</span>
                     <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
-                    <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })} title="RPE | RIR">
-                      <option value="">RPE|RIR</option>
-                      {[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map((v) => <option key={v} value={v}>{fmt(v)} | {fmt(10 - v)}</option>)}
+                    {/* RPE e RIR sono due facce della stessa cosa (RIR = 10 − RPE): entrambi i campi
+                        restano compilabili, ma il valore vero è UNO SOLO, così non possono discordare. */}
+                    <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })} title="RPE">
+                      <option value="">RPE</option>
+                      {RPE_VALS.map((v) => <option key={v} value={v}>{fmt(v)}</option>)}
+                    </select>
+                    <select value={d.rpe === '' ? '' : String(10 - +d.rpe)} title="RIR"
+                      onChange={(e) => setD(it, sp, i, { rpe: e.target.value === '' ? '' : String(10 - +e.target.value) })}>
+                      <option value="">RIR</option>
+                      {[...RPE_VALS].reverse().map((v) => <option key={v} value={10 - v}>{fmt(10 - v)}</option>)}
                     </select>
                     <button className="chk" disabled={!active || !!ssWait} onClick={() => check(it, sp, i)}>✓</button>
                     {(() => {
@@ -1519,6 +1600,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
                 </button>
                 {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
+                {done < sps.length && <button className="addset num" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13, letterSpacing: '.06em' }} onClick={() => setRpeCalc({ it, sp: sps[done], i: done })} title="Calcolatore RPE">RPE</button>}
                 <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => addSetRt(it, isExtra)}>＋ Serie</button>
                 <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>
@@ -1604,6 +1686,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       )}
 
       {barCalc && <BarCalc target={barCalc.target} onUse={(kg) => { setD(barCalc.it, barCalc.sp, barCalc.i, { kg: String(kg) }); setBarCalc(null) }} onClose={() => setBarCalc(null)} />}
+      {rpeCalc && <RpeCalc ex={rpeCalc.it.ex} max0={maxOf(rpeCalc.it.ex)}
+        kg0={parseFloat(getDraft(rpeCalc.it, rpeCalc.sp, rpeCalc.i).kg.replace(',', '.')) || 0}
+        reps0={parseInt(getDraft(rpeCalc.it, rpeCalc.sp, rpeCalc.i).reps, 10) || 0}
+        onUse={(kg) => { setD(rpeCalc.it, rpeCalc.sp, rpeCalc.i, { kg: String(kg) }); setRpeCalc(null) }}
+        onClose={() => setRpeCalc(null)} />}
       {menu && (
         <div className="overlay" onClick={() => setMenu(null)}>
           <div className="sheet menusheet" onClick={(e) => e.stopPropagation()}>

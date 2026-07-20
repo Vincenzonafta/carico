@@ -6,7 +6,9 @@ export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap
 // target = sforzo prescritto per la serie ("@8", "RIR2"): testo libero, l'IA e il parser lo capiscono
 export type SetSpec = { type: SetType; reps: string; load?: string; target?: string }
 // ss = superset con l'esercizio immediatamente successivo del giorno; tempo = tempi/fermi ("disc. 3s, fermo 2s")
-export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string }
+// target = sforzo prescritto per TUTTE le serie ("@8", "RIR2"). Senza questo campo le schede
+// di powerlifting perdevano gli RPE: esistevano solo dentro scheme, cioè a serie differenziate.
+export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string; target?: string }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number; ore?: number }
@@ -43,6 +45,25 @@ export const allItems = (s: State) => s.schede.flatMap((sc) => sc.days.flatMap((
 // 1RM stimato (Epley) e arrotondamento al disco da 2,5 kg
 export const e1rm = (kg: number, reps: number) => kg * (1 + reps / 30)
 export const round25 = (x: number) => Math.round(x / 2.5) * 2.5
+
+// ===== RPE ↔ % del massimale (tabella RTS) =====
+// La tabella classica è 10 RPE × 12 reps, ma ogni cella dipende SOLO da
+// n = reps + RIR = le ripetizioni che avresti fatto arrivando a cedimento.
+// (3 reps @8 e 5 reps @10 valgono entrambe n=5 → 86.3%.) Quindi 120 celle = 12 numeri.
+// ponytail: oltre n=12 resto sull'ultimo valore; per le alte ripetizioni la stima
+// conta poco e la tabella RTS lì è comunque inaffidabile.
+const RPE_PCT = [100, 95.5, 92.2, 89.2, 86.3, 83.7, 81.1, 78.6, 76.2, 73.9, 71.7, 69.4]
+/** Frazione del massimale (0..1) per una serie di `reps` chiusa a quell'`rpe`. */
+export const rpePct = (reps: number, rpe: number) => {
+  const n = Math.max(1, reps + (10 - rpe))
+  const lo = Math.min(RPE_PCT.length, Math.floor(n))
+  const hi = Math.min(RPE_PCT.length, lo + 1)
+  return (RPE_PCT[lo - 1] + (RPE_PCT[hi - 1] - RPE_PCT[lo - 1]) * (n - Math.floor(n))) / 100
+}
+/** Massimale stimato da una serie chiusa a un dato RPE: più onesto di Epley sui carichi alti. */
+export const e1rmRpe = (kg: number, reps: number, rpe: number) => kg / rpePct(reps, rpe)
+/** Carico consigliato per centrare `reps` a quell'`rpe`, arrotondato a 2.5 kg. */
+export const caricoPerRpe = (max: number, reps: number, rpe: number) => round25(max * rpePct(reps, rpe))
 
 const dates = (log: SetLog[], ex: string) =>
   [...new Set(log.filter((s) => s.ex === ex).map((s) => s.date))].sort()
