@@ -11,6 +11,10 @@ export type SetSpec = { type: SetType; reps: string; load?: string; target?: str
 export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string; target?: string }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
+// Cosa è successo a un esercizio in UNA data, oltre alle serie registrate: saltato solo oggi,
+// nota personale di quel giorno, video dell'esecuzione. Vive per data come extras, così la
+// SCHEDA resta intatta: lì ci sono solo le note generali, valide sempre.
+export type SessionEx = { date: string; ex: string; skip?: boolean; note?: string; video?: string }
 export type Checkin = { date: string; sonno: number; energia: number; doms: number; stress: number; ore?: number }
 export type MealType = 'colazione' | 'pranzo' | 'cena' | 'spuntino'
 export type Meal = { date: string; type: MealType; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }
@@ -23,6 +27,7 @@ export type State = {
   schede: Scheda[]; activeScheda: number; activeDay: number
   customExercises: Exercise[]
   extras: { date: string; item: PlanItem }[]
+  sessionEx: SessionEx[]
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
@@ -43,6 +48,19 @@ export const curItems = (s: State) => curDay(s)?.items ?? []
 export const allItems = (s: State) => s.schede.flatMap((sc) => sc.days.flatMap((d) => d.items))
 
 // 1RM stimato (Epley) e arrotondamento al disco da 2,5 kg
+// ?? [] ovunque: gli stati già salvati (localStorage e blob cloud) non hanno il campo.
+export const sessionExOf = (s: State, ex: string, date: string) =>
+  (s.sessionEx ?? []).find((x) => x.date === date && x.ex === ex)
+/** Upsert su (data, esercizio): ritorna la lista nuova, da passare a setS. */
+export function setSessionEx(s: State, ex: string, date: string, patch: Partial<SessionEx>): SessionEx[] {
+  const list = s.sessionEx ?? []
+  const i = list.findIndex((x) => x.date === date && x.ex === ex)
+  if (i < 0) return [...list, { date, ex, ...patch }]
+  const next = [...list]
+  next[i] = { ...next[i], ...patch }
+  return next
+}
+
 export const e1rm = (kg: number, reps: number) => kg * (1 + reps / 30)
 export const round25 = (x: number) => Math.round(x / 2.5) * 2.5
 
@@ -496,7 +514,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [],
+    customExercises: [], extras: [], sessionEx: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -527,7 +545,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [],
+    customExercises: [], extras: [], sessionEx: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },

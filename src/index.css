@@ -429,11 +429,19 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* textarea note nella vista focus */
 .notebox { width:100%; min-height:64px; font-family:var(--sans); font-size:14.5px; line-height:1.5; resize:vertical; }
+/* nota della scheda: promemoria in sola lettura, si modifica nell'editor.
+   Squadrata e con la barra a sinistra per distinguerla dal campo scrivibile di oggi. */
+.schednote { margin-bottom:10px; padding:9px 12px; border-left:3px solid var(--hair);
+  background:var(--surf2); border-radius:0 10px 10px 0; font-size:14px; line-height:1.5; color:var(--mut); }
+.schednote .l { display:block; margin-bottom:3px; font-family:var(--mono); font-size:var(--fs-micro);
+  letter-spacing:.1em; text-transform:uppercase; color:var(--mut2); }
 
 /* ============ vista focus: hero video + titolo + stats ============ */
 .fhero { margin-top:10px; height:128px; border-radius:18px; background:var(--surf); border:1px solid var(--hair);
   display:flex; flex-direction:column; gap:9px; align-items:center; justify-content:center; color:var(--mut2); }
 .fhero svg { width:34px; height:34px; fill:none; stroke:var(--mut2); stroke-width:1.6; stroke-linecap:round; }
+/* col video vero l'altezza fissa taglierebbe l'inquadratura: qui comanda il video */
+.fvideo { height:auto; max-height:52vh; width:100%; display:block; object-fit:contain; background:#000; }
 .ftitle { font-size:24px; font-weight:800; letter-spacing:-.015em; line-height:1.15; margin:16px 2px 0; }
 .fstats { display:flex; margin-top:14px; padding:15px 8px; }
 .fstats > div { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
-  e1rmRpe, caricoPerRpe, round25,
+  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -1241,7 +1241,15 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   s: State; setS: (u: State) => void; startRest: (sec: number) => void; stopRest: () => void
   workoutStart: number | null; setWorkoutStart: (v: number | null) => void; timerActive: boolean
 }) {
-  const plan = curItems(s)
+  // Esercizi tolti SOLO da questa seduta: la scheda resta intatta.
+  const skipped = new Set((s.sessionEx ?? []).filter((x) => x.date === today() && x.skip).map((x) => x.ex))
+  const plan = curItems(s).flatMap((it, i, arr) => {
+    if (skipped.has(it.ex)) return []
+    // se il compagno di superset è saltato oggi sciolgo la coppia: senza, il lock
+    // resterebbe in attesa di una serie di un esercizio che oggi non c'è
+    const next = arr[i + 1]
+    return [it.ss && next && skipped.has(next.ex) ? { ...it, ss: undefined } : it]
+  })
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
   const items = [...plan, ...extras]
   const day = curDay(s)
@@ -1295,15 +1303,19 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const removeEsercizio = async (ex: string, isExtra: boolean) => {
     setMenu(null); setFocus(null)
     if (isExtra) return removeExtra(ex)
-    if (!(await confirmDlg('Rimuovere l\'esercizio?', ex + ' — sparisce da questo giorno della scheda.'))) return
-    const d = structuredClone(s)
-    const dayItems = d.schede[s.activeScheda].days[s.activeDay].items
-    const i = dayItems.findIndex((x) => x.ex === ex)
-    if (i >= 0) {
-      if (i > 0 && dayItems[i - 1].ss) delete dayItems[i - 1].ss // il precedente era in superset col rimosso: sciogli la coppia (senza, il lock resta in stallo)
-      dayItems.splice(i, 1)
-    }
-    setS(d)
+    // Toglie l'esercizio SOLO da oggi: quello che è legato alla scheda resta nella scheda.
+    if (!(await confirmDlg('Togliere l\'esercizio da oggi?', ex + ' — resta nella scheda, sparisce solo da questo allenamento.'))) return
+    setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { skip: true }) })
+  }
+
+  // Video dell'esecuzione legato a (esercizio, oggi): per ora un link, così il coach può guardarlo.
+  const addVideo = async (ex: string) => {
+    const v = await promptDlg('Video esecuzione', [
+      { label: 'Link del video', value: sessionExOf(s, ex, today())?.video ?? '', placeholder: 'https://…' },
+    ])
+    if (!v) return
+    const url = (v[0] ?? '').trim()
+    setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { video: url || undefined }) })
   }
 
   // Ingranaggio: opzioni runtime sull'esercizio in corso
@@ -1503,6 +1515,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         const exDone = done >= sps.length
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
+        const sessNote = sessionExOf(s, it.ex, today()) // nota e video di OGGI su questo esercizio
         const ss = inSS(idx)
         // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A.
         // Il pairing vale SOLO tra esercizi di scheda: mai scavalcare verso gli extra.
@@ -1523,10 +1536,16 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               <button className="pen" onClick={() => setMenu({ it, isExtra, idx })} title="Opzioni esercizio"><Gear size={17} /></button>
             </div>
 
-            <div className="fhero">{/* qui vivrà il video di esecuzione */}
-              <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
-              <span className="sm">Video esecuzione · in arrivo</span>
-            </div>
+            {/* ponytail: <video> con l'URL basta per i file diretti e per il futuro Supabase
+                Storage; l'upload dal telefono e i link YouTube verranno dopo. */}
+            {sessNote?.video
+              ? <video className="fhero fvideo" src={sessNote.video} controls playsInline />
+              : (
+                <div className="fhero" onClick={() => addVideo(it.ex)}>
+                  <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
+                  <span className="sm">Video esecuzione · tocca per allegarlo</span>
+                </div>
+              )}
             <div className="ftitle">{it.ex}</div>
             <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}{it.target ? ' · ' + it.target : ''}</div>
 
@@ -1547,12 +1566,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>
 
+            {/* Due livelli distinti: la nota della SCHEDA vale sempre e si modifica nell'editor
+                (qui è solo un promemoria); quella di OGGI è il tuo feedback su questa seduta. */}
             <div className="card" style={{ marginTop: 12 }}>
-              <div className="cardh"><b>Note sull'esercizio</b></div>
+              <div className="cardh"><b>Note</b></div>
               <div className="cardh-div" />
-              <textarea key={it.ex} className="notebox" rows={2} defaultValue={it.note ?? ''}
-                placeholder="es. fastidio spalla, presa più larga…"
-                onBlur={(e) => { const v = e.target.value.trim(); if (v !== (it.note ?? '')) patchItem(it.ex, isExtra, (t) => { t.note = v || undefined }) }} />
+              {it.note && <div className="schednote"><span className="l">Dalla scheda</span>{it.note}</div>}
+              <textarea key={it.ex} className="notebox" rows={2} defaultValue={sessNote?.note ?? ''}
+                placeholder="Come è andata oggi? es. fastidio spalla, presa più larga…"
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (v !== (sessNote?.note ?? '')) setS({ ...s, sessionEx: setSessionEx(s, it.ex, today(), { note: v || undefined }) })
+                }} />
             </div>
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
@@ -1684,6 +1709,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             )
           })}
           <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio alla seduta</button>
+          {/* senza questo un esercizio tolto per sbaglio sarebbe irrecuperabile: sparisce
+              dalla lista e con essa il suo menu. Azzero solo skip: note e video restano. */}
+          {skipped.size > 0 && (
+            <button className="ghost" style={{ marginTop: 10, fontSize: 13.5 }}
+              onClick={() => setS({ ...s, sessionEx: (s.sessionEx ?? []).map((x) => (x.date === today() && x.skip ? { ...x, skip: undefined } : x)) })}>
+              ↩ Rimetti {skipped.size === 1 ? 'l\'esercizio tolto' : `i ${skipped.size} esercizi tolti`} da oggi
+            </button>
+          )}
         </>
       )}
 
@@ -1713,8 +1746,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <span className="mi"><MenuIcon t="link" /></span>{menu.it.ss ? 'Togli superset' : 'Superset col prossimo'}
                 </button>
               )}
+              <button className="menurow" onClick={() => { const ex = menu.it.ex; setMenu(null); addVideo(ex) }}>
+                <span className="mi">▶</span>{sessionExOf(s, menu.it.ex, today())?.video ? 'Cambia video esecuzione' : 'Allega video esecuzione'}
+              </button>
               <button className="menurow" style={{ color: 'var(--coral)' }} onClick={() => removeEsercizio(menu.it.ex, menu.isExtra)}>
-                <span className="mi">✕</span>Rimuovi esercizio
+                <span className="mi">✕</span>Togli da questo allenamento
               </button>
             </div>
           </div>
@@ -2639,6 +2675,9 @@ function contestoCoach(s: State): string {
   righe.push(`Alimentazione oggi: ${Math.round(oggi.kcal)}/${s.target.kcal} kcal, proteine ${Math.round(oggi.protein)}/${s.target.protein} g`)
   if (s.body.length) righe.push(`Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg`)
   righe.push(`Ultime serie registrate: ${s.log.slice(-8).map((l) => `${l.date} ${l.ex} ${fmt(l.kg)}x${l.reps}${l.rpe ? `@${fmt(l.rpe)}` : ''}`).join(' · ') || 'nessuna'}`)
+  // Feedback scritti di suo pugno durante gli allenamenti: è la voce che i numeri non hanno.
+  const note = (s.sessionEx ?? []).filter((x) => x.note).slice(-8)
+  if (note.length) righe.push(`Sue note dagli allenamenti: ${note.map((x) => `${x.date} ${x.ex}: "${x.note}"${x.video ? ' (ha allegato un video dell\'esecuzione)' : ''}`).join(' · ')}`)
   return righe.join('\n')
 }
 
