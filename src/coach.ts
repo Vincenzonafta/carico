@@ -1,14 +1,16 @@
 // Motore del coach: logica pura, zero UI. Tutto deterministico.
 
 // id: riga specchiata nel cloud (i salvataggi vecchi non ce l'hanno)
-export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null }
+// timed = serie a tempo: "reps" sono SECONDI, non ripetizioni. Segnato al momento di
+// registrarla, così lo storico resta interpretabile anche se poi cambi la scheda.
+export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null; timed?: boolean }
 export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap' | 'failure'
 // target = sforzo prescritto per la serie ("@8", "RIR2"): testo libero, l'IA e il parser lo capiscono
 export type SetSpec = { type: SetType; reps: string; load?: string; target?: string }
 // ss = superset con l'esercizio immediatamente successivo del giorno; tempo = tempi/fermi ("disc. 3s, fermo 2s")
 // target = sforzo prescritto per TUTTE le serie ("@8", "RIR2"). Senza questo campo le schede
 // di powerlifting perdevano gli RPE: esistevano solo dentro scheme, cioè a serie differenziate.
-export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string; target?: string }
+export type PlanItem = { ex: string; sets: number; reps: number; rest: number; muscle: string; note?: string; scheme?: SetSpec[]; ss?: boolean; tempo?: string; target?: string; timed?: boolean }
 export type Day = { name: string; items: PlanItem[] }
 export type Scheda = { name: string; days: Day[] }
 // Cosa è successo a un esercizio in UNA data, oltre alle serie registrate: saltato solo oggi,
@@ -70,6 +72,22 @@ export function setSessionEx(s: State, ex: string, date: string, patch: Partial<
 export const e1rm = (kg: number, reps: number) => kg * (1 + reps / 30)
 export const round25 = (x: number) => Math.round(x / 2.5) * 2.5
 
+// ===== ESERCIZI A TEMPO (plank, isometrie, cardio): i "reps" sono SECONDI =====
+// Il nome basta a riconoscerli nelle schede vecchie, dove il flag non esiste;
+// il flag esplicito, quando c'è, ha sempre l'ultima parola.
+// Verificata sui 90 esercizi in archivio. Attenzione ai tranelli, già costati due
+// falsi positivi: "camminat" prendeva gli AFFONDI camminati, "corda" il push down
+// alla corda, e "bici" prenderebbe i BICIpiti. Nel dubbio si lascia fuori: sbagliare
+// per difetto costa una spunta nell'editor, sbagliare per eccesso falsa le statistiche.
+const TIMED_RE = /plank|isometri|\bhollow\b|wall ?sit|cyclette|tapis|\bcorsa\b|\bcamminata\b|vogatore|\bbici(cletta)?\b/i
+export const isTimed = (it: { ex: string; timed?: boolean }) => it.timed ?? TIMED_RE.test(it.ex)
+
+/**
+ * Volume sollevato in kg. UNICA definizione: le serie a tempo restano fuori,
+ * perché kg × secondi non è un tonnellaggio e falserebbe ogni statistica.
+ */
+export const volume = (log: SetLog[]) => log.reduce((a, l) => a + (l.timed ? 0 : l.kg * l.reps), 0)
+
 // ===== RPE ↔ % del massimale (tabella RTS) =====
 // La tabella classica è 10 RPE × 12 reps, ma ogni cella dipende SOLO da
 // n = reps + RIR = le ripetizioni che avresti fatto arrivando a cedimento.
@@ -89,11 +107,13 @@ export const e1rmRpe = (kg: number, reps: number, rpe: number) => kg / rpePct(re
 /** Carico consigliato per centrare `reps` a quell'`rpe`, arrotondato a 2.5 kg. */
 export const caricoPerRpe = (max: number, reps: number, rpe: number) => round25(max * rpePct(reps, rpe))
 
+// !s.timed ovunque si stimi un massimale: su un plank da 60 secondi e1rm darebbe
+// un "1RM" da 3× il carico. Escluse qui, spariscono da proposta, record e festa PR.
 const dates = (log: SetLog[], ex: string) =>
-  [...new Set(log.filter((s) => s.ex === ex).map((s) => s.date))].sort()
+  [...new Set(log.filter((s) => s.ex === ex && !s.timed).map((s) => s.date))].sort()
 
 const sessE1 = (log: SetLog[], ex: string, date: string) =>
-  Math.max(...log.filter((s) => s.ex === ex && s.date === date).map((s) => e1rm(s.kg, s.reps)))
+  Math.max(...log.filter((s) => s.ex === ex && s.date === date && !s.timed).map((s) => e1rm(s.kg, s.reps)))
 
 const bestE1 = (log: SetLog[], ex: string) => {
   const ds = dates(log, ex)
@@ -138,7 +158,7 @@ export function proposta(s: State, ex: string, targetReps: number) {
 
 // Record: la serie migliore di sempre per e1rm
 export function record(log: SetLog[], ex: string) {
-  const v = log.filter((s) => s.ex === ex)
+  const v = log.filter((s) => s.ex === ex && !s.timed)
   if (!v.length) return null
   return v.reduce((a, s) => (e1rm(s.kg, s.reps) > e1rm(a.kg, a.reps) ? s : a))
 }
@@ -164,7 +184,7 @@ export function stimaCalorie(durataSec: number, pesoCorporeoKg: number): number 
 // Riepilogo di una sessione: tonnellaggio, RPE medio, serie
 export function sessionSummary(log: SetLog[], date: string) {
   const sets = log.filter((s) => s.date === date)
-  const tonnage = sets.reduce((a, s) => a + s.kg * s.reps, 0)
+  const tonnage = volume(sets)
   const rpes = sets.filter((s) => s.rpe != null).map((s) => s.rpe as number)
   const avg = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : 0
   return { sets: sets.length, tonnage, avgRpe: avg }
@@ -416,7 +436,7 @@ export function streak(log: SetLog[]) {
   return n
 }
 export const totalWorkouts = (log: SetLog[]) => new Set(log.map((l) => l.date)).size
-export const totalTonnage = (log: SetLog[]) => log.reduce((a, l) => a + l.kg * l.reps, 0)
+export const totalTonnage = volume
 export function level(log: SetLog[]) {
   const t = totalWorkouts(log)
   return { n: Math.floor(t / 5) + 1, into: t % 5, need: 5 }

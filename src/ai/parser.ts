@@ -37,7 +37,8 @@ NOTAZIONE ITALIANA DA POWERLIFTING (attenzione, è la fonte di errore più comun
 - SQUAT → Gambe; PANCA/panca piana → Petto; STACCO/stacco da terra → Schiena.
 - Tempi, fermi e isometrie ("Iso3''", "fermo 2'' al petto", "3-1-1", "salita lenta") → campo "tempo" dell'esercizio.
 - SUPERSET (esercizi uniti da "+" o indicati in coppia) → DUE esercizi consecutivi separati, con "ss": true sul PRIMO dei due.
-- Esercizi a tempo (plank 60'') → sets = numero di serie, reps = secondi, e in "note" scrivi "durata in secondi".
+- Esercizi a tempo (plank 60'', isometrie, cardio a durata) → sets = numero di serie, reps = i SECONDI,
+  e OBBLIGATORIAMENTE "timed": true. Senza quel flag l'app conterebbe 60 ripetizioni e falserebbe il volume.
 - "muscle" = gruppo muscolare principale, esattamente uno tra: ${MUSCLES.join(', ')}, Altro.
 - Indicazioni di esecuzione del coach → "note" dell'esercizio.
 - NON inventare esercizi o valori assenti dal documento. Mantieni i nomi degli esercizi come scritti (in italiano se lo sono).`
@@ -69,6 +70,7 @@ const SCHEMA = {
                   note: { type: 'string' },
                   tempo: { type: 'string' },
                   target: { type: 'string' }, // RPE/RIR valido per tutte le serie ("@8", "RIR2")
+                  timed: { type: 'boolean' }, // serie a tempo: "reps" sono secondi
                   ss: { type: 'boolean' },
                   scheme: {
                     type: 'array',
@@ -176,6 +178,8 @@ function sanItem(it: Record<string, unknown>): PlanItem | null {
     note: it.note ? String(it.note) : undefined,
     tempo: it.tempo ? String(it.tempo) : undefined,
     target: it.target ? String(it.target) : undefined,
+    // se l'IA non lo marca ci pensa isTimed dal nome: meglio ridondanti che con un plank da 60 reps
+    timed: it.timed === true || undefined,
     ss: it.ss === true ? true : undefined,
     scheme,
   }

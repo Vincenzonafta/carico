@@ -5,7 +5,7 @@ import {
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
-  streak, level, badges, totalWorkouts, totalTonnage,
+  streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
   type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
@@ -413,7 +413,7 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
   const since = weekAgo.toISOString().slice(0, 10)
   const wl = s.log.filter((l) => l.date > since)
   const weekSessions = new Set(wl.map((l) => l.date)).size
-  const weekTon = wl.reduce((a, l) => a + l.kg * l.reps, 0)
+  const weekTon = volume(wl)
   const st = streak(s.log), lvl = level(s.log)
 
   const tot = nutritionToday(s.meals, today())
@@ -891,6 +891,12 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                   <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, gomiti chiusi" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>RPE / RIR previsto</label><input type="text" value={it.target ?? ''} placeholder="es. @8 oppure RIR2 — vale per tutte le serie" onChange={(e) => updItem(i, { target: e.target.value || undefined })} /></div>
+                  {/* isTimed indovina da sé plank & co: qui si conferma o si corregge */}
+                  <label className="tswitch full">
+                    <input type="checkbox" checked={isTimed(it)}
+                      onChange={(e) => updItem(i, { timed: e.target.checked })} />
+                    <span>Esercizio a tempo — le ripetizioni sono <b>secondi</b> e non fanno volume</span>
+                  </label>
 
                   {!it.scheme ? (
                     <>
@@ -1472,17 +1478,20 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
   const check = (it: PlanItem, sp: SetSpec, i: number) => {
     const d = getDraft(it, sp, i)
+    const timed = isTimed(it) // serie a tempo: i "reps" sono secondi
     const kg = parseFloat(d.kg.replace(',', '.'))
-    if (!kg || !+d.reps) return toast('Servono peso e ripetizioni')
+    // a corpo libero il peso è 0 e va benissimo: quello che non può mancare è la durata
+    if (!+d.reps || (!timed && !kg)) return toast(timed ? 'Servono i secondi' : 'Servono peso e ripetizioni')
     if (workoutStart == null) setWorkoutStart(Date.now()) // il cronometro parte dalla prima serie segnata
     const rpe = d.rpe ? +d.rpe : null
-    // Festa record: la serie appena fatta batte il miglior e1rm di sempre su questo esercizio
+    // Festa record: la serie appena fatta batte il miglior e1rm di sempre su questo esercizio.
+    // Sulle serie a tempo non ha senso: record() le esclude e prev resta null.
     const prev = record(s.log, it.ex)
-    const isPr = !!prev && e1rm(kg, +d.reps) > e1rm(prev.kg, prev.reps) + 0.01
+    const isPr = !timed && !!prev && e1rm(kg, +d.reps) > e1rm(prev.kg, prev.reps) + 0.01
     let id: string | undefined
-    try { id = serieLoggata(it.ex, kg, +d.reps, rpe) } // specchio cloud: sessione + recupero reale
+    try { id = serieLoggata(it.ex, kg || 0, +d.reps, rpe) } // specchio cloud: sessione + recupero reale
     catch (e) { console.warn('[serie cloud]', e) } // un errore di sync NON deve bloccare il salvataggio locale
-    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg, reps: +d.reps, rpe }] })
+    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg: kg || 0, reps: +d.reps, rpe, timed: timed || undefined }] })
     if (isPr) { setPr({ ex: it.ex, kg, reps: +d.reps }); navigator.vibrate?.([90, 60, 90]) }
     startRest(it.rest)
     if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
@@ -1556,7 +1565,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   }
 
   const dur = workoutStart ? Math.floor((Date.now() - workoutStart) / 1000) : 0
-  const todayVol = todayLog.reduce((a, x) => a + x.kg * x.reps, 0)
+  const todayVol = volume(todayLog)
   // superset: un item plan con ss è legato al successivo; il seguente eredita il gruppo
   const inSS = (idx: number) => idx < plan.length && ((plan[idx]?.ss ?? false) || (idx > 0 && (plan[idx - 1]?.ss ?? false)))
 
@@ -1619,7 +1628,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
             <div className="card fstats">
               <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>
-              <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span><b className="num">{itemReps(it)}</b><span className="l">Ripetizioni</span></div>
+              <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span><b className="num">{itemReps(it)}{isTimed(it) ? 's' : ''}</b><span className="l">{isTimed(it) ? 'Durata' : 'Ripetizioni'}</span></div>
               <div><span className="fsico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" /></svg></span><b className="num">{mmss(it.rest)}</b><span className="l">Recupero</span></div>
             </div>
 
@@ -1629,7 +1638,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               {lastSets.length
                 ? <>
                     <div className="sm mut">Ultima volta · {lastDate!.split('-').reverse().join('/')}</div>
-                    <div className="num" style={{ marginTop: 5, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${fmt(l.kg)}×${l.reps}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
+                    <div className="num" style={{ marginTop: 5, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${l.timed ? `${l.reps}s${l.kg > 0 ? ' +' + fmt(l.kg) : ''}` : `${fmt(l.kg)}×${l.reps}`}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
                   </>
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>
@@ -1650,14 +1659,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
               <div className="cardh"><b>Serie</b></div>
-              <div className="serhead"><span /><span>Peso (kg)</span><span>Reps</span><span>RPE</span><span>RIR</span><span /></div>
+              <div className="serhead"><span /><span>Peso (kg)</span><span>{isTimed(it) ? 'Secondi' : 'Reps'}</span><span>RPE</span><span>RIR</span><span /></div>
               {sps.map((sp, i) => {
                 if (i < done) {
                   const logged = logOf(it.ex)[i]
                   return (
                     <div className="wrow done" key={i}>
                       <span className="sidx ok">✓</span>
-                      <b className="num" style={{ fontSize: 14 }}>{fmt(logged.kg)} kg × {logged.reps}</b>
+                      <b className="num" style={{ fontSize: 14 }}>
+                        {logged.timed
+                          ? <>{logged.reps}s{logged.kg > 0 && <> · {fmt(logged.kg)} kg</>}</>
+                          : <>{fmt(logged.kg)} kg × {logged.reps}</>}
+                      </b>
                       {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)} · RIR {fmt(10 - logged.rpe)}</span>}
                       {/* video di QUESTA serie: sta sulla riga già fatta, che è la sola con
                           spazio e l'unico momento in cui il video può esistere davvero */}
@@ -1681,7 +1694,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   <div className={'wrow st-' + sp.type + (active ? ' active' : ' pending')} key={i}>
                     <span className="sidx">{i + 1}</span>
                     <input value={d.kg} onChange={(e) => setD(it, sp, i, { kg: e.target.value })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="kg" />
-                    <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder="reps" />
+                    <input value={d.reps} onChange={(e) => setD(it, sp, i, { reps: e.target.value })} onFocus={(e) => e.target.select()} inputMode="numeric" placeholder={isTimed(it) ? 'sec' : 'reps'} />
                     {/* RPE e RIR sono due facce della stessa cosa (RIR = 10 − RPE): entrambi i campi
                         restano compilabili, ma il valore vero è UNO SOLO, così non possono discordare. */}
                     <select value={d.rpe} onChange={(e) => setD(it, sp, i, { rpe: e.target.value })} title="RPE">
@@ -2686,7 +2699,7 @@ function Calendario({ s, onRepeat }: { s: State; onRepeat: (date: string) => voi
   const trained = new Set(s.log.map((l) => l.date))
   const monthName = base.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })
   const monthDates = [...trained].filter((d) => d.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`))
-  const monthVol = s.log.filter((l) => monthDates.includes(l.date)).reduce((a, l) => a + l.kg * l.reps, 0)
+  const monthVol = volume(s.log.filter((l) => monthDates.includes(l.date)))
   const selSum = sel ? sessionSummary(s.log, sel) : null
   const selExs = sel ? [...new Set(s.log.filter((l) => l.date === sel).map((x) => x.ex))] : []
   const rpes = s.log.filter((l) => l.rpe != null).map((l) => l.rpe as number)
@@ -2769,7 +2782,7 @@ function contestoCoach(s: State): string {
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
   const since = weekAgo.toISOString().slice(0, 10)
   const wk = s.log.filter((l) => l.date > since)
-  righe.push(`Ultimi 7 giorni: ${new Set(wk.map((l) => l.date)).size} sedute, ${wk.length} serie, ${fmt(wk.reduce((a, l) => a + l.kg * l.reps, 0) / 1000)} t di volume`)
+  righe.push(`Ultimi 7 giorni: ${new Set(wk.map((l) => l.date)).size} sedute, ${wk.length} serie, ${fmt(volume(wk) / 1000)} t di volume`)
   const rep = weeklyReport(s)
   if (rep.scarico) righe.push(`Segnali di fatica (RPE in salita a parità di carico): ${rep.flags.map((f) => f.ex).join(', ')} → valuta scarico`)
   const oggi = nutritionToday(s.meals, today())
