@@ -582,6 +582,16 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
     setS({ ...s, extras: [...s.extras, ...items.map((item) => ({ date: today(), item }))] })
     toast('Seduta copiata in oggi'); onStart()
   }
+  // Elimina una seduta già terminata: via le sue serie dallo storico locale e dal cloud.
+  // ponytail: resta sul cloud una riga "sessione" vuota (il suo id non è tracciato in locale
+  // per i giorni passati); è invisibile perché tutte le statistiche derivano dalle serie.
+  const deleteDay = async (date: string) => {
+    const gg = new Date(date + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
+    if (!(await confirmDlg('Eliminare questo allenamento?', `${gg} — le serie di quel giorno spariscono, non si può annullare.`))) return
+    for (const l of s.log) if (l.date === date && l.id) serieRimossa(l.id)
+    setS({ ...s, log: s.log.filter((l) => l.date !== date) })
+    toast('Allenamento eliminato')
+  }
   return (
     <>
       <div className="seg" style={{ marginTop: 4, marginBottom: 4 }}>
@@ -590,7 +600,7 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
         ))}
       </div>
       {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
-      {tab === 'cal' && <Calendario s={s} onRepeat={repeatDay} />}
+      {tab === 'cal' && <Calendario s={s} onRepeat={repeatDay} onDelete={deleteDay} />}
       {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
     </>
@@ -647,10 +657,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   }
   const updItem = (i: number, patch: Partial<PlanItem>) => mutate((d) => { Object.assign(dayItems(d)[i], patch) })
   const removeItem = (i: number) => { mutate((d) => { dayItems(d).splice(i, 1) }); setEdit(null) }
-  const moveItem = (i: number, dir: number) => mutate((d) => {
-    const a = dayItems(d), j = i + dir; if (j < 0 || j >= a.length) return
-    ;[a[i], a[j]] = [a[j], a[i]]
-  })
+  // l'ordine si cambia SOLO col drag nella lista del giorno: niente frecce nella schermata esercizio
   const customize = (i: number) => mutate((d) => {
     const it = dayItems(d)[i]
     it.scheme = Array.from({ length: it.sets }, () => ({ type: 'normal' as SetType, reps: String(it.reps) }))
@@ -872,9 +879,13 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
     </>
   )
 
-  // --- Vista 3 · editor del giorno ---
+  // --- Vista 3 · editor del giorno, e Vista 4 · il singolo esercizio ---
+  // Sono ALTERNATIVE, non annidate: con un esercizio aperto la schermata del giorno sparisce
+  // del tutto, altrimenti resterebbero attorno intestazione, "Inizia allenamento" ed "Elimina
+  // giorno" e sembrerebbe una tendina invece di una schermata sua.
   return (
     <>
+      {edit == null && (<>
       <div className="bc">
         <button className="back" onClick={() => setView('scheda')}>‹</button>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -892,7 +903,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       {items.length === 0 && (
         <div className="card"><p className="sm mut" style={{ margin: '10px 2px' }}>Giorno vuoto: aggiungi esercizi dall'archivio ↓</p></div>
       )}
-      {items.length > 0 && edit == null && (
+      {items.length > 0 && (
         <>
           <p className="hint">Tocca per modificare · tieni premuto e trascina per riordinare</p>
           <DragList items={items} rowH={78} keyOf={(it) => it.ex}
@@ -907,6 +918,14 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
             onReorder={(order) => mutate((d) => { const dd = d.schede[s.activeScheda].days[s.activeDay]; dd.items = order.map((i2) => dd.items[i2]) })} />
         </>
       )}
+      <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>
+      {sc && sc.days.length > 1 && (
+        <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }}
+          onClick={async () => { if (await confirmDlg('Eliminare questo giorno?', curDay(s)?.name)) { removeDay(s.activeDay); setView('scheda') } }}>
+          Elimina giorno</button>
+      )}
+      </>)}
+
       {/* Schermata dedicata all'esercizio: stesse card della vista allenamento (video
           dimostrativo, titolo grande, statistiche) e sotto i campi da modificare.
           Prima era una fisarmonica dentro l'elenco: si perdeva il contesto e non c'era
@@ -918,15 +937,13 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
         const demo = (s.exVideo ?? {})[it.ex]
         return (
             <>
+              {/* il ‹ torna alla LISTA esercizi (setEdit null), non di due schermate.
+                  Niente ordine/inizio-allenamento qui: quelli vivono nella lista del giorno. */}
               <div className="bc" style={{ marginTop: 4 }}>
                 <button className="back" onClick={() => setEdit(null)}>‹</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="crumb">{curDay(s)?.name} · esercizio {i + 1} di {items.length}</div>
-                  <div className="bt1">Modifica</div>
-                </div>
-                <div className="row" style={{ gap: 6, flex: 'none' }}>
-                  <button className="pen" onClick={() => moveItem(i, -1)} disabled={i === 0}>↑</button>
-                  <button className="pen" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}>↓</button>
+                  <div className="bt1">Modifica esercizio</div>
                 </div>
               </div>
 
@@ -955,13 +972,7 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
               </div>
 
                 <div className="editor" style={{ marginTop: 12 }}>
-                  <div className="efield"><label>Recupero (sec)</label><input type="number" step="15" value={it.rest} onChange={(e) => updItem(i, { rest: +e.target.value })} inputMode="numeric" /></div>
-                  <div className="efield"><label>Ordine</label>
-                    <div className="row" style={{ gap: 6 }}>
-                      <button className="ghost mini" onClick={() => moveItem(i, -1)} disabled={i === 0}>↑</button>
-                      <button className="ghost mini" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}>↓</button>
-                    </div>
-                  </div>
+                  <div className="efield full"><label>Recupero (sec)</label><input type="number" step="15" value={it.rest} onChange={(e) => updItem(i, { rest: +e.target.value })} inputMode="numeric" /></div>
                   <div className="efield full"><label>Nota</label><input type="text" value={it.note ?? ''} placeholder="es. presa stretta, gomiti chiusi" onChange={(e) => updItem(i, { note: e.target.value })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>RPE / RIR previsto</label><input type="text" value={it.target ?? ''} placeholder="es. @8 oppure RIR2 — vale per tutte le serie" onChange={(e) => updItem(i, { target: e.target.value || undefined })} /></div>
@@ -1014,17 +1025,11 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
         )
       })()}
 
+      {/* input nascosto e overlay attesa: fuori dal wrapper, servono a entrambe le viste */}
       {videoInput}{videoAttesa}
-      {edit == null && <button style={{ marginTop: 12 }} className="ghost" onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>}
       {picker && (
         <ExPicker lib={lib} title={curDay(s)?.name ?? ''} onClose={() => setPicker(false)}
           onPick={addItemByName} onCreate={createAndAdd} />
-      )}
-
-      {sc && sc.days.length > 1 && (
-        <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }}
-          onClick={async () => { if (await confirmDlg('Eliminare questo giorno?', curDay(s)?.name)) { removeDay(s.activeDay); setView('scheda') } }}>
-          Elimina giorno</button>
       )}
     </>
   )
@@ -2823,7 +2828,7 @@ function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) 
   )
 }
 
-function Calendario({ s, onRepeat }: { s: State; onRepeat: (date: string) => void }) {
+function Calendario({ s, onRepeat, onDelete }: { s: State; onRepeat: (date: string) => void; onDelete: (date: string) => void }) {
   const [off, setOff] = useState(0)
   const [sel, setSel] = useState<string | null>(null)
   const base = new Date(); base.setDate(1); base.setMonth(base.getMonth() + off)
@@ -2896,6 +2901,7 @@ function Calendario({ s, onRepeat }: { s: State; onRepeat: (date: string) => voi
             })}
           </div>
           <button style={{ marginTop: 12 }} onClick={() => onRepeat(sel)}>↻ Ripeti questa seduta oggi</button>
+          <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={() => onDelete(sel)}>Elimina questo allenamento</button>
         </div>
       )}
     </>
