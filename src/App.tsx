@@ -14,6 +14,7 @@ import {
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
+import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
 import { chiamaCoach, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
 
@@ -1176,6 +1177,22 @@ function BarCalc({ target, onUse, onClose }: { target?: number; onUse: (kg: numb
   )
 }
 
+// I file nel bucket privato non hanno un link fisso: se ne chiede uno firmato quando
+// si guarda il video. Perciò il <video> vive qui dentro, con i suoi stati di attesa.
+function Video({ src, className }: { src: string; className?: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [ko, setKo] = useState(false)
+  useEffect(() => {
+    let vivo = true // la focus cambia esercizio in fretta: scarto le risposte tardive
+    setUrl(null); setKo(false)
+    videoUrl(src).then((u) => { if (vivo) setUrl(u) }).catch(() => { if (vivo) setKo(true) })
+    return () => { vivo = false }
+  }, [src])
+  if (ko) return <div className={(className ?? '') + ' vidmsg'}>Video non disponibile</div>
+  if (!url) return <div className={(className ?? '') + ' vidmsg'}>Carico il video…</div>
+  return <video className={className} src={url} controls playsInline />
+}
+
 // Calcolatore RPE, nei due versi che servono in palestra:
 // sopra da una serie al massimale stimato, sotto dal massimale al carico per ogni reps@RPE.
 function RpeCalc({ ex, kg0, reps0, max0, onUse, onClose }: {
@@ -1309,30 +1326,52 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { skip: true }) })
   }
 
-  // Dimostrazione "come si esegue": legata al NOME dell'esercizio, vale per sempre e ovunque.
-  const setDemoVideo = async (ex: string) => {
-    const v = await promptDlg('Come si esegue ' + ex, [
-      { label: 'Link della dimostrazione — svuota per toglierla', value: (s.exVideo ?? {})[ex] ?? '', placeholder: 'https://…' },
-    ])
-    if (!v) return
-    const url = (v[0] ?? '').trim()
-    const next = { ...(s.exVideo ?? {}) }
-    if (url) next[ex] = url; else delete next[ex]
-    setS({ ...s, exVideo: next })
+  // ===== VIDEO: un solo <input file> nascosto per tutti i punti da cui si carica =====
+  // Il selettore del telefono offre da sé galleria e fotocamera; a noi basta sapere
+  // DOVE finirà il file, e quello lo teniamo in un ref finché l'utente sceglie.
+  const fileRef = useRef<HTMLInputElement>(null)
+  const vidTarget = useRef<{ kind: 'demo'; ex: string } | { kind: 'serie'; ex: string; i: number } | null>(null)
+  const [upBusy, setUpBusy] = useState(false)
+  const pickVideo = (t: NonNullable<typeof vidTarget.current>) => { vidTarget.current = t; fileRef.current?.click() }
+
+  const onVideoFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // senza il reset, riscegliere lo stesso file non farebbe scattare onChange
+    const t = vidTarget.current; vidTarget.current = null
+    if (!file || !t) return
+    setUpBusy(true)
+    try {
+      const path = await uploadVideo(file)
+      if (t.kind === 'demo') {
+        const prima = (s.exVideo ?? {})[t.ex]
+        setS({ ...s, exVideo: { ...(s.exVideo ?? {}), [t.ex]: path } })
+        if (prima) void deleteVideo(prima) // sostituito: il vecchio file non serve più
+      } else {
+        const cur = sessionExOf(s, t.ex, today())?.setVideos ?? {}
+        const prima = cur[t.i]
+        setS({ ...s, sessionEx: setSessionEx(s, t.ex, today(), { setVideos: { ...cur, [t.i]: path } }) })
+        if (prima) void deleteVideo(prima)
+      }
+      toast('Video caricato')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Caricamento non riuscito')
+    } finally { setUpBusy(false) }
   }
 
-  // Video della SINGOLA serie: la tua esecuzione di quella serie, in quel giorno, così il
-  // coach guarda come l'hai fatta davvero. Indicizzato per numero di serie.
-  const setSerieVideo = async (ex: string, i: number) => {
+  const removeDemoVideo = async (ex: string) => {
+    if (!(await confirmDlg('Togliere la dimostrazione?', ex))) return
+    const cur = (s.exVideo ?? {})[ex]
+    const next = { ...(s.exVideo ?? {}) }; delete next[ex]
+    setS({ ...s, exVideo: next })
+    if (cur) void deleteVideo(cur)
+  }
+
+  const removeSerieVideo = async (ex: string, i: number) => {
     const cur = sessionExOf(s, ex, today())?.setVideos ?? {}
-    const v = await promptDlg(`Video della serie ${i + 1}`, [
-      { label: 'Link del video — svuota per toglierlo', value: cur[i] ?? '', placeholder: 'https://…' },
-    ])
-    if (!v) return
-    const url = (v[0] ?? '').trim()
-    const next = { ...cur }
-    if (url) next[i] = url; else delete next[i]
+    const url = cur[i]
+    const next = { ...cur }; delete next[i]
     setS({ ...s, sessionEx: setSessionEx(s, ex, today(), { setVideos: Object.keys(next).length ? next : undefined }) })
+    if (url) void deleteVideo(url)
   }
 
   // Ingranaggio: opzioni runtime sull'esercizio in corso
@@ -1561,17 +1600,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 I video delle tue serie stanno invece sulle righe delle serie, sotto. */}
             {demoVideo
               ? (
-                // col video il tocco se lo prendono i controlli del player: il comando per
-                // cambiarlo deve stare sopra, altrimenti resti senza via per modificarlo
+                // col video il tocco se lo prendono i controlli del player: i comandi
+                // devono stare sopra, altrimenti resti senza via per cambiarlo o toglierlo
                 <div className="fvwrap">
-                  <video className="fhero fvideo" src={demoVideo} controls playsInline />
-                  <button className="fvedit" onClick={() => setDemoVideo(it.ex)} title="Cambia o togli la dimostrazione">✎</button>
+                  <Video className="fhero fvideo" src={demoVideo} />
+                  <button className="fvedit" onClick={() => pickVideo({ kind: 'demo', ex: it.ex })} title="Sostituisci la dimostrazione">✎</button>
+                  <button className="fvedit fvdel" onClick={() => removeDemoVideo(it.ex)} title="Togli la dimostrazione">✕</button>
                 </div>
               )
               : (
-                <div className="fhero" onClick={() => setDemoVideo(it.ex)}>
+                <div className="fhero" onClick={() => pickVideo({ kind: 'demo', ex: it.ex })}>
                   <svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg>
-                  <span className="sm">Come si esegue · tocca per allegare la dimostrazione</span>
+                  <span className="sm">Come si esegue · tocca per caricare la dimostrazione</span>
                 </div>
               )}
             <div className="ftitle">{it.ex}</div>
@@ -1628,7 +1668,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                             title={url ? 'Guarda il video della serie' : 'Allega il video di questa serie'}
                             onClick={() => url
                               ? setPlayVid({ url, ex: it.ex, i, title: `Serie ${i + 1} · ${it.ex}` })
-                              : setSerieVideo(it.ex, i)}>▶</span>
+                              : pickVideo({ kind: 'serie', ex: it.ex, i })}>▶</span>
                         )
                       })()}
                       <span className="del" onClick={() => uncheck(it.ex, i)}>✕</span>
@@ -1807,14 +1847,27 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         <ExPicker lib={lib} title="Alla seduta di oggi" onClose={() => setPicker(false)}
           onPick={addExtra} onCreate={createAndAddExtra} />
       )}
+      {/* uno solo per tutta la schermata: galleria e fotocamera le offre il telefono */}
+      <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={onVideoFile} />
+      {upBusy && (
+        <div className="overlay center">
+          <div className="dlg" style={{ textAlign: 'center' }}>
+            <b className="dt">Carico il video…</b>
+            <p className="sm mut" style={{ margin: '8px 0 0' }}>Con la rete del telefono può volerci un po'. Non chiudere l'app.</p>
+          </div>
+        </div>
+      )}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {playVid && (
         <div className="overlay center" onClick={() => setPlayVid(null)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
             <b className="dt">{playVid.title}</b>
-            <video className="vidfull" src={playVid.url} controls playsInline autoPlay />
-            <button className="ghost" style={{ marginTop: 12 }}
-              onClick={() => { const p = playVid; setPlayVid(null); setSerieVideo(p.ex, p.i) }}>Cambia o togli</button>
+            <Video className="vidfull" src={playVid.url} />
+            <div className="row" style={{ marginTop: 12 }}>
+              <button className="ghost mini" onClick={() => { const p = playVid; setPlayVid(null); pickVideo({ kind: 'serie', ex: p.ex, i: p.i }) }}>Sostituisci</button>
+              <button className="ghost mini" style={{ color: 'var(--coral)' }}
+                onClick={() => { const p = playVid; setPlayVid(null); void removeSerieVideo(p.ex, p.i) }}>Togli</button>
+            </div>
             <button className="ghost" style={{ marginTop: 8 }} onClick={() => setPlayVid(null)}>Chiudi</button>
           </div>
         </div>

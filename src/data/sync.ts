@@ -73,7 +73,7 @@ const GAP_MS = 3 * 3600_000
 
 // uuid() esiste SOLO in contesti sicuri (HTTPS o localhost). Sul telefono via
 // http://192.168... è indefinito e farebbe fallire il salvataggio: qui un fallback che gira ovunque.
-function uuid(): string {
+export function uuid(): string {
   const c = globalThis.crypto
   if (c && typeof c.randomUUID === 'function') return c.randomUUID()
   const b = new Uint8Array(16)
