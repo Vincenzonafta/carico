@@ -172,6 +172,16 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .wrow.active .chk { background:var(--lime); color:var(--lime-ink); }
 .wsub { grid-column:2 / -1; margin-top:-2px; letter-spacing:.08em; }
 .wrow.done { display:flex; gap:11px; align-items:center; padding:9px 0; }
+/* risposta del coach sul peso: resta finché non decidi tu, un toast da 2s non basta */
+.iasugg { margin-top:12px; padding:13px 14px; border-radius:14px;
+  background:color-mix(in srgb, var(--lime) 9%, var(--surf2)); border:1px solid color-mix(in srgb, var(--lime) 38%, transparent); }
+.iah { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+.iah .l { font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.12em;
+  text-transform:uppercase; color:var(--lime); }
+.iah b { font-size:24px; font-weight:800; }
+.iad { font-family:var(--mono); font-size:12px; color:var(--mut); }
+.iasugg p { margin:7px 0 11px; font-size:14px; line-height:1.5; color:var(--mut); }
+
 /* ===== calcolatore RPE ===== */
 .rpein { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; }
 .rpein label { display:block; font-family:var(--mono); font-size:var(--fs-micro); letter-spacing:.1em;

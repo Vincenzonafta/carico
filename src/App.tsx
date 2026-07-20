@@ -15,7 +15,7 @@ import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
-import { chiamaCoach, aggiustaPeso, type ChatMsg } from './ai/coach'
+import { chiamaCoach, proponiPeso, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
@@ -1471,18 +1471,25 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   // Chiede all'IA di correggere il peso già calcolato. Serve una base: senza storico
   // non c'è niente da correggere, e l'utente lo chiede al coach in chat (che ha gli strumenti).
   const [iaBusy, setIaBusy] = useState(false)
+  const [iaSugg, setIaSugg] = useState<{ ex: string; i: number; kg: number; delta: number | null; perche: string } | null>(null)
   const chiediPeso = async (it: PlanItem, sp: SetSpec, i: number) => {
     const apiKey = s.settings.geminiKey?.trim()
     if (!apiKey) return toast('Serve la chiave Gemini: Profilo → ⚙ → Coach IA')
-    const base = propose(it, sp)
-    if (!base) return toast('Nessuno storico su questo esercizio: chiedilo al Coach in chat')
+    // base 0 = mai fatto: NON è un motivo per rifiutare, è il caso in cui l'IA serve di più
+    const base = propose(it, sp) ?? 0
+    // tetto di sicurezza per la stima a freddo: nessun esercizio nuovo supera il suo massimo di sempre
+    const tetto = Math.max(60, ...s.log.filter((l) => !l.timed).map((l) => maxStimato(s.log, l.ex))) * 1.2
     const reps = parseInt(sp.reps, 10) || itemReps(it)
     const rpe = parseTarget(sp.target)
     const fatti = items.slice(0, items.indexOf(it)).filter((x) => logOf(x.ex).length)
     const righe = [
       `Esercizio: ${it.ex} (${it.muscle}), serie ${i + 1} di ${specs(it).length}.`,
       `Prescrizione: ${reps} ripetizioni${rpe ? ` a RPE ${fmt(rpe)}` : ''}${sp.load ? `, carico ${sp.load}` : ''}${it.tempo ? `, tempi ${it.tempo}` : ''}.`,
-      `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale stimato ${fmt(round25(maxStimato(s.log, it.ex)))} kg).`,
+      base > 0
+        ? `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale stimato ${fmt(round25(maxStimato(s.log, it.ex)))} kg).`
+        : `NON ha mai registrato questo esercizio: non c'è storico da cui calcolare.`,
+      `Suoi massimali stimati sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(maxStimato(s.log, e)))} kg`).join(', ') || 'nessuno'}.`,
+      s.body.length ? `Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg.` : '',
       `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
       `Già fatti oggi prima di questo: ${fatti.length ? fatti.map((x) => `${x.ex} (${x.muscle}, ${logOf(x.ex).length} serie)`).join(', ') : 'niente, è il primo'}.`,
       `Ultime serie su questo esercizio: ${s.log.filter((l) => l.ex === it.ex).slice(-6).map((l) => `${l.date} ${fmt(l.kg)}x${l.reps}${l.rpe ? '@' + fmt(l.rpe) : ''}`).join(' · ') || 'nessuna'}`,
@@ -1490,10 +1497,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     ].filter(Boolean)
     setIaBusy(true)
     try {
-      const { delta, perche } = await aggiustaPeso(apiKey, righe.join('\n'))
-      const kg = round25(base * (1 + delta / 100))
-      setD(it, sp, i, { kg: String(kg) })
-      toast(delta === 0 ? `Confermo ${fmt(kg)} kg — ${perche}` : `${fmt(kg)} kg (${delta > 0 ? '+' : ''}${fmt(delta)}%) — ${perche}`)
+      const { kg, delta, perche } = await proponiPeso(apiKey, righe.join('\n'), base, tetto)
+      // il risultato RESTA a schermo: un avviso da 2 secondi non basta per leggere peso e motivo
+      setIaSugg({ ex: it.ex, i, kg, delta, perche })
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Il coach non ha risposto')
     } finally { setIaBusy(false) }
@@ -1748,6 +1754,21 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   </div>
                 )
               })}
+              {iaSugg && iaSugg.ex === it.ex && (
+                <div className="iasugg">
+                  <div className="iah">
+                    <span className="l">Il coach dice</span>
+                    <b className="num">{fmt(iaSugg.kg)} kg</b>
+                    {iaSugg.delta != null && iaSugg.delta !== 0 && <span className="iad num">{iaSugg.delta > 0 ? '+' : ''}{fmt(iaSugg.delta)}%</span>}
+                    {iaSugg.delta === null && <span className="iad">prima volta</span>}
+                  </div>
+                  <p>{iaSugg.perche}</p>
+                  <div className="row">
+                    <button className="ghost mini" onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.kg) }); setIaSugg(null) }}>Usa questo peso</button>
+                    <button className="ghost mini" onClick={() => setIaSugg(null)}>Lascia stare</button>
+                  </div>
+                </div>
+              )}
               <div className="setbtns" style={{ marginTop: 12 }}>
                 <button className="restchip" style={{ margin: 0, justifyContent: 'center' }} onClick={() => setRestPick({ ex: it.ex, isExtra })}>
                   <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
@@ -1755,7 +1776,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
                 {done < sps.length && <button className="addset num" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13, letterSpacing: '.06em' }} onClick={() => setRpeCalc({ it, sp: sps[done], i: done })} title="Calcolatore RPE">RPE</button>}
                 {done < sps.length && <button className="addset" disabled={iaBusy} style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13 }}
-                  onClick={() => chiediPeso(it, sps[done], done)} title="Chiedi al coach di correggere il peso">{iaBusy ? '…' : '✨ Peso'}</button>}
+                  onClick={() => chiediPeso(it, sps[done], done)} title="Chiedi al coach che peso usare">{iaBusy ? 'penso…' : '✨ Peso'}</button>}
                 <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => addSetRt(it, isExtra)}>＋ Serie</button>
                 <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>

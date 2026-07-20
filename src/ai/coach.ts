@@ -40,20 +40,33 @@ Pesa: readiness (sonno, energia, DOMS, stress), muscoli già allenati oggi e pos
 recupero reale fra le serie, andamento recente dell'RPE sullo stesso esercizio.
 "perche" = UNA riga in italiano, concreta, massimo 90 caratteri, senza markdown.`
 
-export async function aggiustaPeso(apiKey: string, contesto: string): Promise<{ delta: number; perche: string }> {
+const SYSTEM_PRIMA = `Sei il preparatore di CARICO. L'atleta NON ha mai registrato questo esercizio,
+quindi non c'è uno storico da cui calcolare: devi stimare tu il peso di partenza.
+Usa quello che sai dei suoi altri carichi, dei rapporti tipici fra esercizi, del suo peso corporeo
+e della prescrizione (ripetizioni e RPE). Meglio partire PRUDENTI: la prima serie serve a tarare,
+e sbagliare per difetto costa una serie facile, per eccesso costa un infortunio.
+"kg" = il peso consigliato, numero in chilogrammi.
+"perche" = UNA riga in italiano, concreta, massimo 90 caratteri, che dica da cosa l'hai dedotto. Niente markdown.`
+
+/**
+ * Peso proposto dall'IA. Due modi, a seconda che ci sia una base da correggere:
+ * - base > 0 → il modello dà un DELTA percentuale, il peso lo calcola il codice (banda ±10)
+ * - base = 0 → nessuno storico: il modello stima il peso, e lo clampiamo sotto `tetto`
+ * In entrambi i casi il limite vive QUI e non nel prompt.
+ */
+export async function proponiPeso(apiKey: string, contesto: string, base: number, tetto: number): Promise<{ kg: number; delta: number | null; perche: string }> {
+  const primaVolta = base <= 0
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PESO }] },
+      systemInstruction: { parts: [{ text: primaVolta ? SYSTEM_PRIMA : SYSTEM_PESO }] },
       contents: [{ role: 'user', parts: [{ text: contesto }] }],
       generationConfig: {
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: { delta: { type: 'number' }, perche: { type: 'string' } },
-          required: ['delta', 'perche'],
-        },
+        responseSchema: primaVolta
+          ? { type: 'object', properties: { kg: { type: 'number' }, perche: { type: 'string' } }, required: ['kg', 'perche'] }
+          : { type: 'object', properties: { delta: { type: 'number' }, perche: { type: 'string' } }, required: ['delta', 'perche'] },
       },
     }),
   })
@@ -66,14 +79,19 @@ export async function aggiustaPeso(apiKey: string, contesto: string): Promise<{ 
   }
   const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-  let out: { delta?: unknown; perche?: unknown }
+  let out: { delta?: unknown; kg?: unknown; perche?: unknown }
   try { out = JSON.parse(testo) } catch { throw new Error('Risposta del coach non leggibile: riprova.') }
-  const d = Number(out.delta)
-  // il clamp è QUI, non nel prompt: le istruzioni si possono ignorare, questa riga no
-  return {
-    delta: Number.isFinite(d) ? Math.max(-BANDA_PESO, Math.min(BANDA_PESO, d)) : 0,
-    perche: String(out.perche ?? '').slice(0, 140),
+  const perche = String(out.perche ?? '').slice(0, 140)
+  // I limiti vivono QUI e non nel prompt: un'istruzione si può ignorare, un Math.min no.
+  const round25 = (x: number) => Math.round(x / 2.5) * 2.5
+  if (primaVolta) {
+    const k = Number(out.kg)
+    if (!Number.isFinite(k) || k <= 0) throw new Error('Il coach non è riuscito a stimare un peso.')
+    return { kg: round25(Math.max(2.5, Math.min(tetto, k))), delta: null, perche }
   }
+  const d = Number(out.delta)
+  const delta = Number.isFinite(d) ? Math.max(-BANDA_PESO, Math.min(BANDA_PESO, d)) : 0
+  return { kg: round25(base * (1 + delta / 100)), delta, perche }
 }
 
 // Una chiamata al coach: storia della chat + contesto del momento. Gira il loop tool-use:
