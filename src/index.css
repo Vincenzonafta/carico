@@ -60,7 +60,10 @@ h2, .tile .l, .prop .t, .msg .who, .timer .tl, .prband .pt2, .verdict .vt,
 }
 h2 { margin:22px 2px 10px; }
 
-.card { background:var(--surf); border:1px solid var(--hair); border-radius:16px; padding:14px; }
+/* ombra morbida: su fondo quasi-nero senza questa la card "galleggia", col bordo grigio
+   sembra solo un contorno. L'ombra la fa posare, come un pannello sopra la pagina. */
+.card { background:var(--surf); border:1px solid var(--hair); border-radius:16px; padding:14px;
+  box-shadow:0 2px 14px rgba(0,0,0,.35); }
 
 /* ============ controlli ============ */
 input, select, textarea { background:var(--surf2); border:1px solid var(--hair); color:var(--chalk);

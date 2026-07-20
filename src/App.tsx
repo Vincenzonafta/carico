@@ -594,7 +594,7 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
   }
   return (
     <>
-      <div className="seg" style={{ marginTop: 4, marginBottom: 4 }}>
+      <div className="seg" style={{ marginTop: 4, marginBottom: 20 }}>
         {([['schede', 'Schede'], ['cal', 'Calendario'], ['stats', 'Stats']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
@@ -965,13 +965,9 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                 <i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}
                 {tag ? ' · ' + tag : ''}{it.ss && items[i + 1] ? ' · superset con ' + items[i + 1].ex : ''}
               </div>
-              <div className="card fstats">
-                <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{itemSetCount(it)}</b><span className="l">Serie</span></div>
-                <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" /></svg></span><b className="num">{itemReps(it)}{isTimed(it) ? 's' : ''}</b><span className="l">{isTimed(it) ? 'Durata' : 'Ripetizioni'}</span></div>
-                <div><span className="fsico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 1.9" /></svg></span><b className="num">{mmss(it.rest)}</b><span className="l">Recupero</span></div>
-              </div>
 
-              {/* Sezioni distinte in card separate, come la vista allenamento: le serie da una
+              {/* Niente card statistiche qui: ripeterebbe i numeri che stai già editando sotto.
+                  Sezioni distinte in card separate, come la vista allenamento: le serie da una
                   parte, i dettagli dall'altra, l'azione distruttiva staccata in fondo. */}
               <div className="card" style={{ marginTop: 12 }}>
                 <div className="cardh"><b>Serie e ripetizioni</b></div>
