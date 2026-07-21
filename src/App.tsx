@@ -1604,7 +1604,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     const load = sp.load?.match(/(-?)\s*@?\s*(\d+)\s*%/)
     if (max > 0 && load && load[1] !== '-') return round25(max * (+load[2] / 100))
     const rpe = parseTarget(sp.target)
-    let kg = max > 0 && rpe ? caricoPerRpe(max, reps, rpe) : proposta(s, it.ex, reps)?.kg ?? 0
+    // senza prescrizione il bersaglio è il peso COERENTE COL PR per quelle reps (inverso di Epley):
+    // è il numero da provare a battere, non una stima scontata dalla readiness
+    let kg = max > 0 && rpe ? caricoPerRpe(max, reps, rpe)
+      : max > 0 ? max / (1 + reps / 30)
+      : proposta(s, it.ex, reps)?.kg ?? 0
     if (!kg) return null
     if (load && load[1] === '-') kg *= 1 - +load[2] / 100
     if (sp.type === 'warmup') kg *= 0.5
@@ -1656,6 +1660,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       // RECUPERI REALI misurati (ora anche in locale)
       (() => { const rec = logOf(it.ex).map((l) => l.rec).filter((r): r is number => r != null)
         return rec.length ? `Recuperi reali fra le serie di oggi su questo esercizio: ${rec.join(', ')} sec. Se più corti del solito, cala il carico.` : '' })(),
+      // SERIE GIÀ FATTE OGGI su questo esercizio: al ri-click l'IA vede com'è andata e adatta la prossima
+      (() => { const oggi = logOf(it.ex)
+        return oggi.length ? `Serie GIÀ fatte oggi su questo esercizio: ${oggi.map((l) => `${fmt(l.kg)}x${l.reps}${l.rpe ? '@' + fmt(l.rpe) : ''}`).join(' · ')}. Stai proponendo il peso per la serie ${i + 1}: tieni conto di com'è andata.` : 'Prima serie di oggi su questo esercizio.' })(),
       sessionExOf(s, it.ex, today())?.note ? `Sua nota di oggi su questo esercizio: "${sessionExOf(s, it.ex, today())!.note}"` : '',
     ].filter(Boolean)
     setIaBusy(true)
