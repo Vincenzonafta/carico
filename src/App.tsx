@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
-  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale,
+  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale, progressione, contestoEsercizio,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -1621,8 +1621,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       `Suoi massimali sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(massimale(s, e).kg))} kg`).join(', ') || 'nessuno'}.`,
       s.body.length ? `Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg.` : '',
       `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
-      `Già fatti oggi prima di questo: ${fatti.length ? fatti.map((x) => `${x.ex} (${x.muscle}, ${logOf(x.ex).length} serie)`).join(', ') : 'niente, è il primo'}.`,
-      `Ultime serie su questo esercizio: ${s.log.filter((l) => l.ex === it.ex).slice(-6).map((l) => `${l.date} ${fmt(l.kg)}x${l.reps}${l.rpe ? '@' + fmt(l.rpe) : ''}`).join(' · ') || 'nessuna'}`,
+      // CONTESTO DI OGGI: dov'è nell'ordine e quanto quel muscolo è già stato colpito.
+      // pos e pre-affaticamento si leggono da ciò che è già stato fatto oggi (fatti + logOf).
+      (() => {
+        const pos = fatti.length + 1
+        const preSerie = fatti.filter((x) => x.muscle === it.muscle).reduce((a, x) => a + logOf(x.ex).length, 0)
+        return `Oggi è il ${pos}° esercizio della seduta; su ${it.muscle} hai già fatto ${preSerie} serie prima di questo. ${pos > 1 ? 'Muscolo pre-affaticato: è normale usare meno di quando era il primo esercizio.' : 'Muscolo fresco.'}`
+      })(),
+      // STORICO ANNOTATO COL CONTESTO: il peso nudo inganna, la posizione lo spiega
+      `Sedute passate di ${it.ex} (1RM stimato · posizione · serie di ${it.muscle} prima): ${progressione(s, it.ex).map((p) => `${p.date} ${fmt(round25(p.e1rm))}kg al ${p.pos}° con ${p.preSerie} serie prima`).join(' · ') || 'nessuna'}. Giudica la PROGRESSIONE tenendo conto del contesto, non del peso nudo.`,
+      // RECUPERI REALI misurati (ora anche in locale)
+      (() => { const rec = logOf(it.ex).map((l) => l.rec).filter((r): r is number => r != null)
+        return rec.length ? `Recuperi reali fra le serie di oggi su questo esercizio: ${rec.join(', ')} sec. Se più corti del solito, cala il carico.` : '' })(),
       sessionExOf(s, it.ex, today())?.note ? `Sua nota di oggi su questo esercizio: "${sessionExOf(s, it.ex, today())!.note}"` : '',
     ].filter(Boolean)
     setIaBusy(true)
@@ -1658,9 +1668,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     const prev = record(s.log, it.ex)
     const isPr = !timed && !!prev && e1rm(kg, +d.reps) > e1rm(prev.kg, prev.reps) + 0.01
     let id: string | undefined
-    try { id = serieLoggata(it.ex, kg || 0, +d.reps, rpe) } // specchio cloud: sessione + recupero reale
+    let rec: number | null = null
+    try { const r = serieLoggata(it.ex, kg || 0, +d.reps, rpe); id = r.id; rec = r.rec } // specchio cloud + recupero reale
     catch (e) { console.warn('[serie cloud]', e) } // un errore di sync NON deve bloccare il salvataggio locale
-    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg: kg || 0, reps: +d.reps, rpe, timed: timed || undefined }] })
+    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg: kg || 0, reps: +d.reps, rpe, timed: timed || undefined, rec }] })
     if (isPr) { setPr({ ex: it.ex, kg, reps: +d.reps }); navigator.vibrate?.([90, 60, 90]) }
     startRest(it.rest)
     if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
@@ -1808,6 +1819,19 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 ? <>
                     <div className="sm mut">Ultima volta · {lastDate!.split('-').reverse().join('/')}</div>
                     <div className="num" style={{ marginTop: 5, fontWeight: 700, fontSize: 14.5, lineHeight: 1.7 }}>{lastSets.map((l) => `${l.timed ? `${l.reps}s${l.kg > 0 ? ' +' + fmt(l.kg) : ''}` : `${fmt(l.kg)}×${l.reps}`}${l.rpe != null ? '@' + fmt(l.rpe) : ''}`).join('  ·  ')}</div>
+                    {/* contesto = confronto onesto: stesso peso letto in posizioni diverse non è la stessa cosa */}
+                    {(() => {
+                      const prima = contestoEsercizio(s, it.ex, lastDate!)
+                      const oggiPos = items.findIndex((x) => x.ex === it.ex) + 1
+                      const oggiPre = items.slice(0, oggiPos - 1).filter((x) => x.muscle === it.muscle).reduce((a, x) => a + logOf(x.ex).length, 0)
+                      return (
+                        <div className="sm mut" style={{ marginTop: 7, lineHeight: 1.5 }}>
+                          Allora: {prima.pos}° esercizio, {prima.preSerieMuscolo} serie di {it.muscle} prima.<br />
+                          Oggi: {oggiPos}° esercizio, {oggiPre} finora.
+                          {oggiPos > prima.pos && <b style={{ color: 'var(--amber)' }}> Più affaticato: normale calare un po'.</b>}
+                        </div>
+                      )
+                    })()}
                   </>
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>

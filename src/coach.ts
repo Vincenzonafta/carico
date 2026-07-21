@@ -3,7 +3,9 @@
 // id: riga specchiata nel cloud (i salvataggi vecchi non ce l'hanno)
 // timed = serie a tempo: "reps" sono SECONDI, non ripetizioni. Segnato al momento di
 // registrarla, così lo storico resta interpretabile anche se poi cambi la scheda.
-export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null; timed?: boolean }
+// rec = recupero REALE in secondi prima di questa serie (null = prima della seduta). Prima
+// viveva solo sul cloud; ora anche in locale, così il tasto Peso lo può leggere senza query.
+export type SetLog = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null; timed?: boolean; rec?: number | null }
 export type SetType = 'normal' | 'warmup' | 'ramp' | 'backoff' | 'drop' | 'amrap' | 'failure'
 // target = sforzo prescritto per la serie ("@8", "RIR2"): testo libero, l'IA e il parser lo capiscono
 export type SetSpec = { type: SetType; reps: string; load?: string; target?: string }
@@ -133,6 +135,33 @@ export function maxStimato(log: SetLog[], ex: string): number {
 
 /** Massimale da usare per le proposte: il riferimento scritto dall'utente vince (è un dato
  *  vero), altrimenti la stima dello storico. `fonte` distingue i due per mostrarlo con onestà. */
+export const muscoloDi = (s: State, ex: string): string =>
+  [...EXERCISES, ...s.customExercises].find((e) => e.name === ex)?.muscle ?? lookupMuscle(ex)
+
+// Contesto di un esercizio in UNA seduta: dov'è nell'ordine e quante serie sullo STESSO
+// muscolo erano già state fatte prima. Il log locale è in ordine di esecuzione, quindi si
+// deriva senza salvare nulla. È ciò che rende confrontabili i pesi fra sedute: 80 kg da 1°
+// esercizio e 75 da 5° dopo 12 serie di schiena non si giudicano con lo stesso metro.
+export function contestoEsercizio(s: State, ex: string, date: string): { pos: number; tot: number; preSerieMuscolo: number } {
+  const giorno = s.log.filter((l) => l.date === date)
+  const mus = muscoloDi(s, ex)
+  const ordine: string[] = []
+  for (const l of giorno) if (!ordine.includes(l.ex)) ordine.push(l.ex)
+  const firstIdx = giorno.findIndex((l) => l.ex === ex)
+  const preSerieMuscolo = firstIdx < 0 ? 0 : giorno.slice(0, firstIdx).filter((l) => muscoloDi(s, l.ex) === mus).length
+  return { pos: ordine.indexOf(ex) + 1, tot: ordine.length, preSerieMuscolo }
+}
+
+// Le ultime sedute di un esercizio col loro contesto: serve a giudicare la progressione
+// senza farsi ingannare dal peso nudo. Serie a tempo escluse.
+export function progressione(s: State, ex: string, nMax = 5): { date: string; e1rm: number; pos: number; preSerie: number }[] {
+  const ds = [...new Set(s.log.filter((l) => l.ex === ex && !l.timed && l.kg > 0).map((l) => l.date))].sort().slice(-nMax)
+  return ds.map((d) => {
+    const c = contestoEsercizio(s, ex, d)
+    return { date: d, e1rm: sessE1(s.log, ex, d), pos: c.pos, preSerie: c.preSerieMuscolo }
+  })
+}
+
 export function massimale(s: State, ex: string): { kg: number; fonte: 'ref' | 'stima' | 'nessuno' } {
   const r = (s.refMax ?? {})[ex]
   // reps=1 è un 1RM VERO: vale il peso stesso. Epley a 1 rep lo gonferebbe (120→124).

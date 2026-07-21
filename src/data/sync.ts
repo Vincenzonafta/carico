@@ -87,7 +87,7 @@ export function uuid(): string {
 
 // Registra una serie: apre la sessione se serve, misura il recupero REALE
 // (tempo dall'ultima serie segnata, qualunque esercizio). Ritorna l'id della riga cloud.
-export function serieLoggata(esercizio: string, peso: number, reps: number, rpe: number | null): string {
+export function serieLoggata(esercizio: string, peso: number, reps: number, rpe: number | null): { id: string; rec: number | null } {
   const now = Date.now()
   if (!sess || now - sess.lastSetAt > GAP_MS) {
     sess = { id: uuid(), lastSetAt: now, n: 0, ids: [] }
@@ -100,7 +100,7 @@ export function serieLoggata(esercizio: string, peso: number, reps: number, rpe:
     id, sessione_id: sess.id, esercizio, ordine: sess.n,
     peso, reps, rpe, recupero_sec, ts: new Date(now).toISOString(),
   } })
-  return id
+  return { id, rec: recupero_sec } // rec: lo storico locale lo teneva solo sul cloud, ora anche qui
 }
 
 // Spunta tolta nell'app: la riga cloud sparisce (il DB deve restare la verità)
@@ -177,7 +177,10 @@ export async function pullAll(uid: string) {
   ])
   return {
     dati: (cfg.data?.dati ?? null) as Record<string, unknown> | null,
-    log: (se.data ?? []).map((r) => ({ id: r.id, date: String(r.ts).slice(0, 10), ex: r.esercizio, kg: Number(r.peso), reps: r.reps, rpe: r.rpe })),
+    // ordinate per ts: il contesto (posizione nella seduta, pre-affaticamento) si deriva
+    // dall'ordine del log, quindi dev'essere quello di esecuzione anche dopo il pull dal cloud
+    log: (se.data ?? []).slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+      .map((r) => ({ id: r.id, date: String(r.ts).slice(0, 10), ex: r.esercizio, kg: Number(r.peso), reps: r.reps, rpe: r.rpe, rec: r.recupero_sec ?? null })),
     checkins: (ci.data ?? []).map((c) => ({ date: c.data, sonno: c.sonno, energia: c.energia, doms: c.doms, stress: c.stress, ore: c.ore ?? undefined })),
     meals: (pa.data ?? []).map((p) => ({ date: p.data, type: p.tipo, name: p.nome, kcal: p.kcal, protein: Number(p.prot), carbs: Number(p.carbo), fat: Number(p.grassi), grams: p.grammi ?? undefined })),
     body: (pe.data ?? []).map((b) => ({ date: b.data, kg: Number(b.kg) })),
