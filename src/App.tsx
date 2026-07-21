@@ -1631,8 +1631,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       base > 0
         ? `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale ${massimale(s, it.ex).fonte === 'ref' ? 'DICHIARATO dall\'atleta' : 'solo stimato dallo storico'}: ${fmt(round25(massimale(s, it.ex).kg))} kg).`
         : `NON ha mai registrato questo esercizio: non c'è storico da cui calcolare.`,
+      // record in forma reps (120x8): il coach lo cita così com'è, non come 1RM astratto
+      (s.refMax ?? {})[it.ex] ? `Il suo RECORD dichiarato su ${it.ex}: ${fmt(s.refMax[it.ex].kg)} kg × ${s.refMax[it.ex].reps} reps.` : '',
       `Suoi massimali sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(massimale(s, e).kg))} kg`).join(', ') || 'nessuno'}.`,
-      s.body.length ? `Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg.` : '',
+      // recupero IMPOSTATO (quello previsto): l'utente ha chiesto esplicitamente di guardarlo
+      `Recupero impostato tra le serie: ${it.rest} secondi.`,
+      // alimentazione + deficit (il "sono in cut" che l'utente vuole considerato)
+      (() => {
+        const n = nutritionToday(s.meals, today()); const kcal = Math.round(n.kcal); const t = s.target.kcal
+        const cut = t > 0 && kcal < t * 0.9 ? ' — sotto il fabbisogno, probabile deficit/cut' : ''
+        const peso = s.body.length ? `Peso corporeo ${fmt(s.body[s.body.length - 1].kg)} kg. ` : ''
+        return `${peso}Oggi ha mangiato ${kcal}/${t} kcal, proteine ${Math.round(n.protein)}/${s.target.protein} g${cut}.`
+      })(),
       `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
       // CONTESTO DI OGGI: dov'è nell'ordine e quanto quel muscolo è già stato colpito.
       // pos e pre-affaticamento si leggono da ciò che è già stato fatto oggi (fatti + logOf).
@@ -1924,7 +1934,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               {iaSugg && iaSugg.ex === it.ex && (
                 <div className="iasugg">
                   <div className="iah">
-                    <span className="l">Il coach dice</span>
+                    <span className="l">✨ Consiglio del coach · oggi</span>
                     <b className="num">{fmt(iaSugg.kg)} kg</b>
                     {iaSugg.delta != null && iaSugg.delta !== 0 && <span className="iad num">{iaSugg.delta > 0 ? '+' : ''}{fmt(iaSugg.delta)}%</span>}
                     {iaSugg.delta === null && <span className="iad">prima volta</span>}

@@ -30,26 +30,33 @@ Non sei un medico: su infortuni e dolori rimanda a un professionista, senza fare
 // insieme, e il contesto che serve glielo passiamo già scritto.
 export const BANDA_PESO = 10 // percentuale massima di correzione, in più o in meno
 
-const SYSTEM_PESO = `Sei il preparatore di CARICO. Ti do il peso che l'aritmetica ha già calcolato
-(massimale stimato per la percentuale corrispondente all'RPE prescritto) e il contesto della giornata.
-Il tuo compito è UNO SOLO: dire di quanto va corretto, in percentuale, e perché.
-"delta" = numero da -${BANDA_PESO} a ${BANDA_PESO}. Zero significa che va bene così, ed è la risposta giusta
-tutte le volte che non hai motivi solidi per cambiare: non inventare aggiustamenti per sembrare utile.
-Pesa: readiness (sonno, energia, DOMS, stress), muscoli già allenati oggi e posizione nella seduta,
-recupero reale fra le serie, andamento recente dell'RPE sullo stesso esercizio.
-PROGRESSIONE: giudica se sta migliorando guardando il CONTESTO, non il peso nudo. Lo stesso esercizio
-fatto per ultimo, con il muscolo già affaticato da molte serie, rende meno di quando era il primo: un
-peso più basso in quella posizione può essere comunque una progressione. Se oggi è più indietro nella
-seduta rispetto alle volte scorse, aspettati e proponi un carico più basso senza chiamarlo regressione.
-"perche" = UNA riga in italiano, concreta, massimo 90 caratteri, senza markdown.`
+// La spiegazione è il valore per l'utente: NON una riga secca, ma un ragionamento che collega
+// record, affaticamento, recupero e progressione, parlandogli in seconda persona.
+const COME_SPIEGARE = `"perche" = la spiegazione, 2-4 frasi in italiano, che parlano all'atleta in seconda persona
+("tu") e collegano i punti VERI del suo contesto: il suo record su questo esercizio, se il muscolo è già
+stato colpito e a che punto è della seduta, il recupero (quello impostato e quello reale se c'è),
+l'alimentazione solo se rilevante (es. è in deficit), e come progredire. Concreta, niente markdown,
+niente frasi di circostanza. Esempio di TONO (non di contenuto): "So che il tuo record qui è 120x8, ma
+hai già fatto la lat e sei al terzo esercizio, quindi oggi non lo reggi. Con soli 45s di recupero prova
+X kg: se le chiudi pulite, la prossima volta saliamo."`
+
+const SYSTEM_PESO = `Sei il preparatore di CARICO. Ti do il peso che l'aritmetica ha già calcolato dal
+massimale e il contesto COMPLETO della giornata. Devi fare due cose:
+1) "delta" = di quanto correggere quel peso, numero da -${BANDA_PESO} a ${BANDA_PESO} (percento). Zero se va
+bene così, ed è la risposta giusta quando non hai motivi solidi: non inventare aggiustamenti per sembrare utile.
+Pesa TUTTO ciò che ti passo: readiness (sonno, energia, DOMS, stress), peso corporeo, alimentazione e se è
+in deficit, muscoli già allenati oggi e posizione nella seduta, recupero impostato e reale, andamento dell'RPE.
+PROGRESSIONE: giudica il miglioramento dal CONTESTO, non dal peso nudo. Lo stesso esercizio fatto per ultimo,
+col muscolo già affaticato, rende meno di quando era il primo: un peso più basso in quella posizione può
+essere comunque una progressione. Se oggi è più indietro nella seduta, proponi meno senza chiamarlo regressione.
+2) ${COME_SPIEGARE}`
 
 const SYSTEM_PRIMA = `Sei il preparatore di CARICO. L'atleta NON ha mai registrato questo esercizio,
-quindi non c'è uno storico da cui calcolare: devi stimare tu il peso di partenza.
-Usa quello che sai dei suoi altri carichi, dei rapporti tipici fra esercizi, del suo peso corporeo
-e della prescrizione (ripetizioni e RPE). Meglio partire PRUDENTI: la prima serie serve a tarare,
-e sbagliare per difetto costa una serie facile, per eccesso costa un infortunio.
-"kg" = il peso consigliato, numero in chilogrammi.
-"perche" = UNA riga in italiano, concreta, massimo 90 caratteri, che dica da cosa l'hai dedotto. Niente markdown.`
+quindi non c'è storico da cui calcolare: stimi tu il peso di partenza da quello che sai dei suoi altri
+carichi e record, dai rapporti tipici fra esercizi, dal peso corporeo e dalla prescrizione. Parti PRUDENTE:
+la prima serie serve a tarare, sbagliare per difetto costa una serie facile, per eccesso un infortunio.
+"kg" = il peso consigliato in chilogrammi.
+${COME_SPIEGARE}`
 
 /**
  * Peso proposto dall'IA. Due modi, a seconda che ci sia una base da correggere:
@@ -84,7 +91,7 @@ export async function proponiPeso(apiKey: string, contesto: string, base: number
   const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
   let out: { delta?: unknown; kg?: unknown; perche?: unknown }
   try { out = JSON.parse(testo) } catch { throw new Error('Risposta del coach non leggibile: riprova.') }
-  const perche = String(out.perche ?? '').slice(0, 140)
+  const perche = String(out.perche ?? '').slice(0, 500) // una spiegazione di 2-4 frasi, non una riga
   // I limiti vivono QUI e non nel prompt: un'istruzione si può ignorare, un Math.min no.
   const round25 = (x: number) => Math.round(x / 2.5) * 2.5
   if (primaVolta) {
