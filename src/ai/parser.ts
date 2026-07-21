@@ -27,18 +27,10 @@ NOTAZIONE ITALIANA DA POWERLIFTING (attenzione, è la fonte di errore più comun
   Esempio: "3 @6 ; 3*3s" → scheme: [{reps:"3", target:"@6"}, {reps:"3"}, {reps:"3"}, {reps:"3"}]
   (prima una singola da 3 reps @6, poi 3 serie da 3).
   Esempio: "87% 2*5s" → 5 serie da 2 reps con load "@87%".
-- "," (VIRGOLA) fra valori dello STESSO esercizio = serie in sequenza, con REGOLA DI TRASCINAMENTO:
-  il primo valore fissa reps e RPE/percentuale; i valori dopo la virgola sono le serie SEGUENTI e
-  MANTENGONO l'ultimo RPE/carico indicato finché non ne compare uno nuovo.
-  Genera SEMPRE una voce di "scheme" per OGNI serie, ognuna con il suo "target" (o "load") compilato
-  per trascinamento — NON collassare in un unico target globale dell'esercizio.
-  Esempio: "3@6, 3, 3" → scheme: [{reps:"3",target:"@6"},{reps:"3",target:"@6"},{reps:"3",target:"@6"}] (tutte @6).
-  Esempio: "3@6, 3@7, 2@8" → scheme con target "@6", "@7", "@8".
-  Esempio: "5 @7, 5, 5 @8" → target "@7", "@7", "@8" (il terzo cambia).
-- REGOLA GENERALE per l'RPE/carico PER SERIE: se cambiano tra le serie, o se c'è una notazione per-serie
-  (virgola, punto e virgola, elenco), usa SEMPRE "scheme" col "target"/"load" su OGNI voce. Il "target"
-  globale dell'esercizio va usato SOLO quando davvero tutte le serie hanno lo stesso identico valore
-  e non esiste alcuna notazione che elenchi le serie una per una.
+- RAPPRESENTAZIONE PER SERIE (formato dell'app, vale sempre): se l'RPE o il carico cambiano tra le serie,
+  o se le serie sono elencate una per una, usa SEMPRE "scheme" col "target"/"load" su OGNI voce. Il
+  "target" globale dell'esercizio va usato SOLO quando tutte le serie hanno davvero lo stesso valore
+  e non c'è alcuna notazione che le elenchi separatamente.
 - "F2''" = fermo di 2 secondi, "Iso3''" = isometria 3 secondi, "Salita lenta (3'')", "ist" = isometria:
   vanno tutti nel campo "tempo" dell'esercizio, non nelle note.
 - "→" o "⇒" fra due prescrizioni dello STESSO esercizio = serie in stripping/scalata:
@@ -109,12 +101,25 @@ const SCHEMA = {
   },
 }
 
-// `nota` = spiegazione scritta dall'atleta su com'è fatta la sua scheda (notazione del suo
-// coach, significato delle colonne, correzioni dopo un'anteprima sbagliata). Ha la precedenza
-// sulle regole generali: è lui che il documento ce l'ha davanti.
+// `nota` = spiegazione/correzione scritta dall'ATLETA sulla SUA scheda (la notazione del suo
+// preparatore, che è specifica e NON universale). Va messa in cima e trattata come autoritativa:
+// è lui che ha il documento davanti, e le sue regole battono quelle generali. Il default resta
+// pulito, senza notazioni di un singolo utente.
 export async function parseSchedaFile(file: File, apiKey: string, nota?: string): Promise<Scheda[]> {
   const istruzioni = nota?.trim()
-    ? `${PROMPT}\n\nISTRUZIONI DELL'ATLETA SU QUESTA SCHEDA — hanno la PRECEDENZA sulle regole qui sopra\nogni volta che le contraddicono, perché descrivono la notazione del suo preparatore:\n${nota.trim()}`
+    ? `⚠️ REGOLE DELL'ATLETA PER QUESTA SCHEDA — AUTORITATIVE. Leggile PRIMA di tutto e applicale ALLA LETTERA.
+Descrivono la notazione del suo preparatore (specifica di questa scheda) e VINCONO SEMPRE su qualunque
+regola generale più sotto ogni volta che la contraddicono. Valgono per l'INTERO documento.
+Se una di queste regole implica valori PER SERIE (RPE, carico o ripetizioni diversi da una serie all'altra,
+oppure una regola che "trascina"/ripete un valore alle serie successive), ESPANDILE in "scheme" con una
+voce per OGNI serie, ognuna col suo valore — non riassumere in un unico target globale.
+«««
+${nota.trim()}
+»»»
+
+Qui sotto le regole GENERALI, da usare solo dove le regole dell'atleta qui sopra non dicono nulla:
+
+${PROMPT}`
     : PROMPT
   const b64 = await new Promise<string>((res, rej) => {
     const r = new FileReader()
