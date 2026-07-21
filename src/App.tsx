@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
-  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato,
+  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale,
   historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -656,6 +656,11 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
     setEdit(items.length); setPicker(false)
   }
   const updItem = (i: number, patch: Partial<PlanItem>) => mutate((d) => { Object.assign(dayItems(d)[i], patch) })
+  // massimale di riferimento per NOME esercizio (non per PlanItem: vale ovunque compaia)
+  const setRefMax = (ex: string, v: { kg: number; reps: number } | null) => mutate((d) => {
+    d.refMax = { ...(d.refMax ?? {}) }
+    if (v) d.refMax[ex] = v; else delete d.refMax[ex]
+  })
   const removeItem = (i: number) => { mutate((d) => { dayItems(d).splice(i, 1) }); setEdit(null) }
   // l'ordine si cambia SOLO col drag nella lista del giorno: niente frecce nella schermata esercizio
   const customize = (i: number) => mutate((d) => {
@@ -1013,6 +1018,32 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                   <span>Esercizio a tempo — le ripetizioni sono <b>secondi</b> e non fanno volume</span>
                 </label>
               </div>
+
+              {!isTimed(it) && (() => {
+                const rm = (s.refMax ?? {})[it.ex]
+                const m = massimale(s, it.ex)
+                return (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <div className="cardh"><b>Massimale di riferimento</b></div>
+                    <div className="cardh-div" />
+                    <p className="sm mut" style={{ margin: '0 0 10px' }}>
+                      Il tuo record: peso × ripetizioni. Metti <b>1</b> reps per un massimale vero, o il tuo PR
+                      (es. 100 × 5). Ancora i pesi proposti a % e RPE a un numero tuo, non a una stima.
+                    </p>
+                    <div className="egrid">
+                      <div className="efield"><label>Peso (kg)</label>
+                        <input type="number" inputMode="decimal" value={rm?.kg ?? ''} placeholder="—"
+                          onChange={(e) => { const kg = +e.target.value; setRefMax(it.ex, kg > 0 ? { kg, reps: rm?.reps || 1 } : null) }} /></div>
+                      <div className="efield"><label>Ripetizioni</label>
+                        <input type="number" inputMode="numeric" value={rm?.reps ?? ''} placeholder="1"
+                          onChange={(e) => { const reps = +e.target.value; if (rm?.kg) setRefMax(it.ex, { kg: rm.kg, reps: Math.max(1, reps) }) }} /></div>
+                    </div>
+                    <p className="sm" style={{ margin: '9px 0 0', color: m.fonte === 'ref' ? 'var(--lime)' : 'var(--mut2)' }}>
+                      {m.fonte === 'ref' ? `Massimale stimato: ${fmt(round25(m.kg))} kg` : m.fonte === 'stima' ? `Ora si usa la stima dello storico: ${fmt(round25(m.kg))} kg` : 'Nessun massimale: le proposte partiranno dallo storico quando ci sarà'}
+                    </p>
+                  </div>
+                )
+              })()}
 
               <div className="card" style={{ marginTop: 12 }}>
                 <div className="cardh"><b>Dettagli</b></div>
@@ -1398,7 +1429,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
   const [playVid, setPlayVid] = useState<{ url: string; ex: string; i: number; title: string } | null>(null)
-  const maxOf = (ex: string) => maxStimato(s.log, ex)
+  const maxOf = (ex: string) => massimale(s, ex).kg
   const [draft, setDraft] = useState<Record<string, Draft>>({})
   const [picker, setPicker] = useState(false)
   const [statsEx, setStatsEx] = useState<string | null>(null)
@@ -1556,7 +1587,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   // "-5%" è un'altra cosa da "87%": è uno scarico RELATIVO al peso di lavoro, non del massimale.
   const propose = (it: PlanItem, sp: SetSpec): number | null => {
     const reps = parseInt(sp.reps, 10) || itemReps(it)
-    const max = maxStimato(s.log, it.ex)
+    const max = massimale(s, it.ex).kg // riferimento dell'utente se c'è, altrimenti stima
     const load = sp.load?.match(/(-?)\s*@?\s*(\d+)\s*%/)
     if (max > 0 && load && load[1] !== '-') return round25(max * (+load[2] / 100))
     const rpe = parseTarget(sp.target)
@@ -1585,9 +1616,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       `Esercizio: ${it.ex} (${it.muscle}), serie ${i + 1} di ${specs(it).length}.`,
       `Prescrizione: ${reps} ripetizioni${rpe ? ` a RPE ${fmt(rpe)}` : ''}${sp.load ? `, carico ${sp.load}` : ''}${it.tempo ? `, tempi ${it.tempo}` : ''}.`,
       base > 0
-        ? `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale stimato ${fmt(round25(maxStimato(s.log, it.ex)))} kg).`
+        ? `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale ${massimale(s, it.ex).fonte === 'ref' ? 'DICHIARATO dall\'atleta' : 'solo stimato dallo storico'}: ${fmt(round25(massimale(s, it.ex).kg))} kg).`
         : `NON ha mai registrato questo esercizio: non c'è storico da cui calcolare.`,
-      `Suoi massimali stimati sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(maxStimato(s.log, e)))} kg`).join(', ') || 'nessuno'}.`,
+      `Suoi massimali sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(massimale(s, e).kg))} kg`).join(', ') || 'nessuno'}.`,
       s.body.length ? `Peso corporeo: ${fmt(s.body[s.body.length - 1].kg)} kg.` : '',
       `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
       `Già fatti oggi prima di questo: ${fatti.length ? fatti.map((x) => `${x.ex} (${x.muscle}, ${logOf(x.ex).length} serie)`).join(', ') : 'niente, è il primo'}.`,

@@ -36,6 +36,10 @@ export type State = {
   // perché è una proprietà dell'esercizio in sé — se la panca compare in tre schede,
   // la dimostrazione è la stessa e la registri una volta sola.
   exVideo: Record<string, string>
+  // Massimale di RIFERIMENTO scritto dall'utente, come serie {kg, reps}: reps=1 è un 1RM vero,
+  // altrimenti è il PR di ripetizioni e Epley lo converte. Ancora le proposte a % e RPE a un
+  // numero VERO invece che alla stima dello storico (che manca se il PR è precedente all'app).
+  refMax: Record<string, { kg: number; reps: number }>
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
@@ -125,6 +129,16 @@ export function parseTarget(t?: string): number | null {
 export function maxStimato(log: SetLog[], ex: string): number {
   const v = log.filter((l) => l.ex === ex && !l.timed && l.kg > 0)
   return v.length ? Math.max(...v.map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps)))) : 0
+}
+
+/** Massimale da usare per le proposte: il riferimento scritto dall'utente vince (è un dato
+ *  vero), altrimenti la stima dello storico. `fonte` distingue i due per mostrarlo con onestà. */
+export function massimale(s: State, ex: string): { kg: number; fonte: 'ref' | 'stima' | 'nessuno' } {
+  const r = (s.refMax ?? {})[ex]
+  // reps=1 è un 1RM VERO: vale il peso stesso. Epley a 1 rep lo gonferebbe (120→124).
+  if (r && r.kg > 0 && r.reps >= 1) return { kg: r.reps === 1 ? r.kg : e1rm(r.kg, r.reps), fonte: 'ref' }
+  const st = maxStimato(s.log, ex)
+  return st > 0 ? { kg: st, fonte: 'stima' } : { kg: 0, fonte: 'nessuno' }
 }
 
 // !s.timed ovunque si stimi un massimale: su un plank da 60 secondi e1rm darebbe
@@ -560,7 +574,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -591,7 +605,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },
