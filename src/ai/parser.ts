@@ -27,6 +27,18 @@ NOTAZIONE ITALIANA DA POWERLIFTING (attenzione, è la fonte di errore più comun
   Esempio: "3 @6 ; 3*3s" → scheme: [{reps:"3", target:"@6"}, {reps:"3"}, {reps:"3"}, {reps:"3"}]
   (prima una singola da 3 reps @6, poi 3 serie da 3).
   Esempio: "87% 2*5s" → 5 serie da 2 reps con load "@87%".
+- "," (VIRGOLA) fra valori dello STESSO esercizio = serie in sequenza, con REGOLA DI TRASCINAMENTO:
+  il primo valore fissa reps e RPE/percentuale; i valori dopo la virgola sono le serie SEGUENTI e
+  MANTENGONO l'ultimo RPE/carico indicato finché non ne compare uno nuovo.
+  Genera SEMPRE una voce di "scheme" per OGNI serie, ognuna con il suo "target" (o "load") compilato
+  per trascinamento — NON collassare in un unico target globale dell'esercizio.
+  Esempio: "3@6, 3, 3" → scheme: [{reps:"3",target:"@6"},{reps:"3",target:"@6"},{reps:"3",target:"@6"}] (tutte @6).
+  Esempio: "3@6, 3@7, 2@8" → scheme con target "@6", "@7", "@8".
+  Esempio: "5 @7, 5, 5 @8" → target "@7", "@7", "@8" (il terzo cambia).
+- REGOLA GENERALE per l'RPE/carico PER SERIE: se cambiano tra le serie, o se c'è una notazione per-serie
+  (virgola, punto e virgola, elenco), usa SEMPRE "scheme" col "target"/"load" su OGNI voce. Il "target"
+  globale dell'esercizio va usato SOLO quando davvero tutte le serie hanno lo stesso identico valore
+  e non esiste alcuna notazione che elenchi le serie una per una.
 - "F2''" = fermo di 2 secondi, "Iso3''" = isometria 3 secondi, "Salita lenta (3'')", "ist" = isometria:
   vanno tutti nel campo "tempo" dell'esercizio, non nelle note.
 - "→" o "⇒" fra due prescrizioni dello STESSO esercizio = serie in stripping/scalata:

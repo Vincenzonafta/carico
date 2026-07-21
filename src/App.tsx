@@ -816,13 +816,26 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                   <button className="pen" onClick={() => setAiImp(null)}>✕</button>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                  {/* dettaglio per esercizio: reps, RPE/carico anche PER SERIE, così si vede
+                      subito se il parser ha preso gli RPE giusti prima di importare */}
                   {aiImp.schede.map((sc2, i) => (
                     <div className="card" key={i} style={{ marginTop: 10 }}>
                       <b style={{ fontSize: 15.5 }}>{sc2.name}</b>
                       {sc2.days.map((dd, j) => (
-                        <div key={j} style={{ marginTop: 9 }}>
+                        <div key={j} style={{ marginTop: 11 }}>
                           <div className="sm" style={{ fontWeight: 700 }}>{dd.name} <span className="mut">· {dd.items.length} esercizi</span></div>
-                          <div className="meta" style={{ lineHeight: 1.5 }}>{dd.items.map((x) => x.ex + (x.ss ? ' ⁺' : '')).join(' · ')}</div>
+                          {dd.items.map((x, k) => {
+                            const det = x.scheme
+                              ? x.scheme.map((sp) => `${sp.reps}${sp.load ? ' ' + sp.load : ''}${sp.target ? ' ' + sp.target : ''}`).join(' · ')
+                              : `${x.sets}×${x.reps}${x.target ? ' ' + x.target : ''}`
+                            return (
+                              <div key={k} className="meta" style={{ lineHeight: 1.5, marginTop: 4 }}>
+                                <span style={{ color: 'var(--chalk)', fontWeight: 600 }}>{x.ex}{x.ss ? ' ⁺' : ''}</span>
+                                {' — '}<span className="num">{det}</span>
+                                {x.tempo ? ` · ${x.tempo}` : ''}{x.timed ? ' · a tempo' : ''}
+                              </div>
+                            )
+                          })}
                         </div>
                       ))}
                     </div>
