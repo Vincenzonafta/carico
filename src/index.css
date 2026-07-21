@@ -1,7 +1,9 @@
 ﻿/* ============ tokens — contrasto alto ============ */
 :root {
-  /* superfici più staccate dallo sfondo e bordi più visibili: tutto "si vede" di più */
-  --bg:#050709; --surf:#171D26; --surf2:#252E3A; --hair:#54626F;
+  /* Tre LIVELLI ben distinti: prima erano grigi troppo vicini e l'occhio non capiva
+     cosa stesse sopra cosa. Ora gradini larghi — sfondo (non più nero-assoluto, così
+     non è un "vuoto piatto") → card che salta via → campo chiaramente incassato. */
+  --bg:#0A0D13; --surf:#1B2230; --surf2:#2C3644; --hair:#566173;
   /* testi secondari alzati: il grigio spento era il primo colpevole della poca evidenza */
   --chalk:#FFFFFF; --mut:#C6D0DC; --mut2:#9BA7B6;
   /* palette ridotta: lime = accento, amber/coral = semantici, teal solo per i macro. Niente blu. */
