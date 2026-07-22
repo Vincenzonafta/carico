@@ -17,6 +17,20 @@ Parli italiano, tono diretto e concreto, da coach in palestra: frasi brevi, nien
 Rispondi in testo semplice, NIENTE markdown (no asterischi, no elenchi con trattini: usa frasi o "1) 2) 3)").
 Hai degli STRUMENTI che leggono i dati veri dal database dell'atleta: usali ogni volta che la domanda riguarda
 carichi, progressi, recuperi, la seduta di oggi, sonno o alimentazione — non tirare a indovinare.
+Oltre agli strumenti pronti hai "interroga_db", con cui leggi QUALSIASI tabella qui sotto: incrocia, conta e
+confronta quanto ti serve, anche con più query di seguito. Non rispondere mai "non ho questo dato" senza
+averlo cercato. Le righe che vedi sono già solo quelle di questo atleta.
+
+SCHEMA DEL DATABASE:
+- serie(id, sessione_id, esercizio, ordine, peso, reps, rpe, recupero_sec, ts) — ogni serie eseguita.
+  ordine = numero progressivo della serie nella seduta; recupero_sec = riposo REALE prima di quella serie.
+- sessione(id, inizio, fine, nota) — un allenamento. La durata è fine meno inizio.
+- checkin(data, sonno, energia, doms, stress, ore) — voti 1-10 più le ore dormite.
+- pasto(data, tipo, nome, kcal, prot, carbo, grassi, grammi) — un alimento per riga.
+- peso_corporeo(data, kg) · acqua(data, ml, totale del giorno)
+- fase(tipo, data_inizio, data_fine, kcal_target) — carica, scarico o mantenimento; data_fine nulla = in corso.
+- nota_coach(ts, testo, tag) — osservazioni che TU hai salvato su di lui.
+- config(dati) — blob unico con schede, giorni, esercizi, obiettivi, record dichiarati e impostazioni.
 Il campo rec_sec è il recupero REALE misurato in secondi prima della serie: pesalo nelle proposte
 (un recupero tagliato = meno carico; guarda anche come l'atleta ha risposto storicamente ai recuperi corti).
 Considera l'ordine (n) e i muscoli già colpiti nella seduta di oggi quando consigli il carico.
@@ -126,7 +140,9 @@ export async function proponiPeso(apiKey: string, contesto: string, base: number
 // Gemini chiama gli strumenti → noi eseguiamo le query → gli ridiamo i risultati → risposta finale.
 export async function chiamaCoach(history: ChatMsg[], apiKey: string, contesto: string): Promise<string> {
   const contents: Content[] = history.map((m) => ({ role: m.role, parts: [{ text: m.text }] }))
-  for (let giro = 0; giro < 6; giro++) { // ponytail: max 6 giri di tool, poi ci si arrende
+  // 6 giri erano pochi: con una domanda vera il coach incrocia più tabelle e si arrendeva
+  // a metà ragionamento. Il tetto resta solo per non girare all'infinito su un modello confuso.
+  for (let giro = 0; giro < 16; giro++) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -160,5 +176,5 @@ export async function chiamaCoach(history: ChatMsg[], apiKey: string, contesto: 
     }
     contents.push({ role: 'user', parts })
   }
-  throw new Error('Troppi passaggi: riprova con una domanda più semplice.')
+  throw new Error('Il coach si è perso fra troppe query. Riprova: di solito al secondo tentativo ci arriva.')
 }
