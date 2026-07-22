@@ -1640,8 +1640,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
       // record in forma reps (120x8): il coach lo cita così com'è, non come 1RM astratto
       (s.refMax ?? {})[it.ex] ? `Il suo RECORD dichiarato su ${it.ex}: ${fmt(s.refMax[it.ex].kg)} kg × ${s.refMax[it.ex].reps} reps.` : '',
       `Suoi massimali sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(massimale(s, e).kg))} kg`).join(', ') || 'nessuno'}.`,
-      // recupero IMPOSTATO (quello previsto): l'utente ha chiesto esplicitamente di guardarlo
-      `Recupero impostato tra le serie: ${it.rest} secondi.`,
+      // recupero IMPOSTATO: è l'ancora del carico proposto. In minuti perché il modello non
+      // debba convertirlo a mente e non sbagli a giudicare se è corto o abbondante.
+      `Recupero IMPOSTATO per questo esercizio: ${it.rest} secondi (${mmss(it.rest)} minuti). È questo il recupero su cui calibrare il carico.`,
       // alimentazione + deficit (il "sono in cut" che l'utente vuole considerato)
       (() => {
         const n = nutritionToday(s.meals, today()); const kcal = Math.round(n.kcal); const t = s.target.kcal
