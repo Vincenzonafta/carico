@@ -186,6 +186,13 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .iah b { font-size:24px; font-weight:800; }
 .iad { font-family:var(--mono); font-size:12px; color:var(--mut); }
 .iasugg p { margin:7px 0 11px; font-size:14px; line-height:1.5; color:var(--mut); }
+/* i due carichi affiancati: quello del coach e quello aritmetico, si sceglie toccando */
+.duecar { display:flex; gap:8px; }
+.duecar button { flex:1; width:auto; padding:10px 8px; border-radius:12px; display:flex;
+  flex-direction:column; align-items:center; gap:2px; }
+.duecar .l { font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; opacity:.75; }
+.duecar b { font-size:17px; font-weight:800; }
+.duecar .alt { background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); }
 
 /* ===== calcolatore RPE ===== */
 .rpein { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; }

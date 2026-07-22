@@ -297,7 +297,7 @@ export default function App() {
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} timerActive={timer != null} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
-      {tab === 'coach' && <Coach s={s} />}
+      {tab === 'coach' && <Coach s={s} onChat={(c) => setS({ ...sRef.current, chat: c })} />}
       {tab === 'profilo' && <Profilo s={s} setS={setS} />}
 
       {cronoOpen && <RestPicker value={cronoPick} onChange={setCronoPick}
@@ -1618,7 +1618,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   // Chiede all'IA di correggere il peso già calcolato. Serve una base: senza storico
   // non c'è niente da correggere, e l'utente lo chiede al coach in chat (che ha gli strumenti).
   const [iaBusy, setIaBusy] = useState(false)
-  const [iaSugg, setIaSugg] = useState<{ ex: string; i: number; kg: number; delta: number | null; perche: string } | null>(null)
+  // base = il carico ARITMETICO (sempre calcolato), kg = quello dell'IA: due configurazioni
+  // parallele, si mostrano entrambe e l'atleta sceglie
+  const [iaSugg, setIaSugg] = useState<{ ex: string; i: number; kg: number; base: number; delta: number | null; perche: string } | null>(null)
   const chiediPeso = async (it: PlanItem, sp: SetSpec, i: number) => {
     const apiKey = s.settings.geminiKey?.trim()
     if (!apiKey) return toast('Serve la chiave Gemini: Profilo → ⚙ → Coach IA')
@@ -1669,7 +1671,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     try {
       const { kg, delta, perche } = await proponiPeso(apiKey, righe.join('\n'), base, tetto)
       // il risultato RESTA a schermo: un avviso da 2 secondi non basta per leggere peso e motivo
-      setIaSugg({ ex: it.ex, i, kg, delta, perche })
+      setIaSugg({ ex: it.ex, i, kg, base, delta, perche })
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Il coach non ha risposto')
     } finally { setIaBusy(false) }
@@ -1947,10 +1949,18 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                     {iaSugg.delta === null && <span className="iad">prima volta</span>}
                   </div>
                   <p>{iaSugg.perche}</p>
-                  <div className="row">
-                    <button className="ghost mini" onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.kg) }); setIaSugg(null) }}>Usa questo peso</button>
-                    <button className="ghost mini" onClick={() => setIaSugg(null)}>Lascia stare</button>
+                  {/* i due numeri convivono: l'aritmetico c'è SEMPRE, l'IA è il consiglio ragionato */}
+                  <div className="duecar">
+                    <button onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.kg) }); setIaSugg(null) }}>
+                      <span className="l">Coach</span><b className="num">{fmt(iaSugg.kg)} kg</b>
+                    </button>
+                    {iaSugg.base > 0 && (
+                      <button className="alt" onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.base) }); setIaSugg(null) }}>
+                        <span className="l">Aritmetico</span><b className="num">{fmt(iaSugg.base)} kg</b>
+                      </button>
+                    )}
                   </div>
+                  <button className="ghost mini" style={{ width: '100%', marginTop: 8 }} onClick={() => setIaSugg(null)}>Lascia stare</button>
                 </div>
               )}
               <div className="setbtns" style={{ marginTop: 12 }}>
@@ -3026,16 +3036,34 @@ function contestoCoach(s: State): string {
   if (note.length) righe.push(`Sue note dagli allenamenti: ${note.map((x) => `${x.date} ${x.ex}: "${x.note}"`).join(' · ')}`)
   const vid = (s.sessionEx ?? []).filter((x) => x.setVideos && Object.keys(x.setVideos).length).slice(-6)
   if (vid.length) righe.push(`Ha registrato le sue serie (puoi chiedergli di descriverti l'esecuzione): ${vid.map((x) => `${x.date} ${x.ex} serie ${Object.keys(x.setVideos!).map((n) => +n + 1).join(',')}`).join(' · ')}`)
+  // RECORD dichiarati: sono il bersaglio da battere, la chat deve poterli citare
+  const rec = Object.entries(s.refMax ?? {})
+  if (rec.length) righe.push(`Record che ha DICHIARATO lui: ${rec.map(([e, r]) => `${e} ${fmt(r.kg)}x${r.reps} (max stimato ${fmt(round25(massimale(s, e).kg))} kg)`).join(' · ')}`)
+  // PROGRESSIONE COL CONTESTO sugli esercizi allenati di recente: stessa lettura del tasto Peso
+  const exRecenti = [...new Set(s.log.filter((l) => !l.timed).slice(-40).map((l) => l.ex))].slice(0, 6)
+  if (exRecenti.length) {
+    righe.push('Progressione col CONTESTO (1RM stimato · posizione nella seduta · serie sullo stesso muscolo prima). Giudica il progresso da qui, non dal peso nudo:')
+    for (const e of exRecenti) {
+      const p = progressione(s, e, 4)
+      if (p.length) righe.push(`  ${e}: ${p.map((x) => `${x.date} ${fmt(round25(x.e1rm))}kg al ${x.pos}° con ${x.preSerie} prima`).join(' · ')}`)
+    }
+  }
   return righe.join('\n')
 }
 
-function Coach({ s }: { s: State }) {
+function Coach({ s, onChat }: { s: State; onChat: (c: ChatMsg[]) => void }) {
   const key = s.settings.geminiKey?.trim()
-  const [chat, setChat] = useState<ChatMsg[]>([])
+  // la conversazione vive nello STATO (salvata e sincronizzata): prima era locale al
+  // componente e spariva appena cambiavi scheda. onChat scrive sullo stato PIÙ RECENTE:
+  // la risposta arriva async e con uno snapshot vecchio cancelleremmo le serie nel frattempo.
+  const chat = s.chat ?? []
+  const setChat = onChat
   const [inp, setInp] = useState('')
   const [busy, setBusy] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [chat, busy])
+  // sulla LUNGHEZZA, non sull'array: `s.chat ?? []` è un oggetto nuovo a ogni render e
+  // farebbe scattare lo scroll di continuo
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [chat.length, busy])
   const send = async () => {
     const t = inp.trim()
     if (!t || busy || !key) return
@@ -3047,6 +3075,9 @@ function Coach({ s }: { s: State }) {
     } catch (e) {
       setChat([...nuova, { role: 'model', text: '⚠ ' + ((e as Error).message || 'Errore sconosciuto') }])
     } finally { setBusy(false) }
+  }
+  const svuota = async () => {
+    if (chat.length && await confirmDlg('Svuotare la conversazione?', 'I messaggi vengono cancellati.')) setChat([])
   }
 
   if (!key) return (
@@ -3068,7 +3099,10 @@ function Coach({ s }: { s: State }) {
 
   return (
     <>
-      <h2>Coach IA</h2>
+      <div className="row" style={{ alignItems: 'baseline' }}>
+        <h2 style={{ flex: 1 }}>Coach IA</h2>
+        {chat.length > 0 && <button className="ghost" style={{ width: 'auto', padding: '6px 12px', fontSize: 12.5 }} onClick={svuota}>Svuota</button>}
+      </div>
       <div className="chatlog">
         {chat.length === 0 && (
           <div className="bubble ai">Ciao! Sono il tuo coach. Chiedimi dei tuoi allenamenti, del peso da caricare, di recupero o alimentazione. Conosco i tuoi dati.</div>

@@ -157,6 +157,8 @@ export function configSalvata(st: Record<string, unknown>) {
     schede: st.schede, activeScheda: st.activeScheda, activeDay: st.activeDay,
     customExercises: st.customExercises, extras: st.extras, sessionEx: st.sessionEx,
     exVideo: st.exVideo, refMax: st.refMax, target: st.target,
+    // chat troncata: il blob è uno snapshot, una conversazione lunga lo gonfierebbe senza motivo
+    chat: Array.isArray(st.chat) ? st.chat.slice(-60) : [],
     mealPlan: st.mealPlan, goal: st.goal, settings: st.settings, customFoods: st.customFoods,
   }
   const last = q[q.length - 1]

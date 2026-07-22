@@ -29,6 +29,9 @@ export type BodyLog = { date: string; kg: number }
 export type Goal = { ex: string; targetKg: number }
 export type Water = { date: string; ml: number }
 export type Exercise = { name: string; muscle: string }
+// Messaggio della chat col coach. Sta qui e non in ai/coach perché lo STATO lo salva:
+// il dominio non deve dipendere dal modulo che parla con Gemini.
+export type ChatMsg = { role: 'user' | 'model'; text: string }
 export type State = {
   schede: Scheda[]; activeScheda: number; activeDay: number
   customExercises: Exercise[]
@@ -42,6 +45,7 @@ export type State = {
   // altrimenti è il PR di ripetizioni e Epley lo converte. Ancora le proposte a % e RPE a un
   // numero VERO invece che alla stima dello storico (che manca se il PR è precedente all'app).
   refMax: Record<string, { kg: number; reps: number }>
+  chat: ChatMsg[] // conversazione col coach, salvata: si perdeva cambiando scheda
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
@@ -160,6 +164,31 @@ export function progressione(s: State, ex: string, nMax = 5): { date: string; e1
     const c = contestoEsercizio(s, ex, d)
     return { date: d, e1rm: sessE1(s.log, ex, d), pos: c.pos, preSerie: c.preSerieMuscolo }
   })
+}
+
+/** Il primo peso (scatto da 2,5 kg) che a `reps` ripetizioni SUPERA un 1RM di riferimento. */
+export const pesoPerBattere = (e1rmRif: number, reps: number): number =>
+  Math.ceil((e1rmRif / (1 + reps / 30) + 0.01) / 2.5) * 2.5
+
+/**
+ * Bersagli ARITMETICI della progressione — si calcolano SEMPRE, l'IA li usa e non li inventa:
+ *  - `pesoPR`     batte il record assoluto
+ *  - `pesoUltima` batte l'ultima seduta
+ *  - `pesoSimile` batte l'ultima seduta fatta in condizioni ALMENO altrettanto affaticate
+ *    (stessa posizione o più indietro). Quando oggi il muscolo è già stato colpito è QUESTO
+ *    il confronto onesto: batterlo è progresso vero, anche se il peso è sotto il PR.
+ */
+export function obiettiviProgressione(s: State, ex: string, reps: number, posOggi: number) {
+  const st = progressione(s, ex, 10)
+  const pr = maxStimato(s.log, ex)
+  const ultima = st.length ? st[st.length - 1] : null
+  const simili = st.filter((x) => x.pos >= posOggi)
+  const simile = simili.length ? simili[simili.length - 1] : null
+  return {
+    pr, pesoPR: pr > 0 ? pesoPerBattere(pr, reps) : null,
+    ultima, pesoUltima: ultima ? pesoPerBattere(ultima.e1rm, reps) : null,
+    simile, pesoSimile: simile ? pesoPerBattere(simile.e1rm, reps) : null,
+  }
 }
 
 export function massimale(s: State, ex: string): { kg: number; fonte: 'ref' | 'stima' | 'nessuno' } {
@@ -603,7 +632,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -634,7 +663,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },

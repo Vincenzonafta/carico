@@ -5,8 +5,9 @@
 // dal database — storico con recuperi misurati, seduta in corso, check-in, nutrizione.
 import { TOOL_DECLS, eseguiTool } from '../data/tools'
 import { MODEL } from './model'
+import type { ChatMsg } from '../coach'
 
-export type ChatMsg = { role: 'user' | 'model'; text: string }
+export type { ChatMsg } // il tipo vive nel dominio (lo stato lo salva), qui si ri-esporta
 type Part = { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: unknown } }
 type Content = { role: string; parts: Part[] }
 
@@ -53,6 +54,9 @@ RPE altissimo), cambia strada per la serie dopo: proponi un carico realistico o 
 rinunciare a progredire. Se invece le ha chiuse facili, alza.
 PROGRESSIONE COL CONTESTO: giudica dal contesto, non dal peso nudo. Lo stesso esercizio fatto per ultimo, col
 muscolo già affaticato, rende meno di quando era il primo: battere il PR-di-posizione conta come progresso.
+Se il muscolo è già stato colpito, NOMINA l'esercizio che l'ha affaticato (es. "hai già fatto il rematore")
+e dai comunque il carico con cui OGGI ottiene un progresso in quella condizione: mai un "vai tranquillo"
+generico. Di' sempre il numero da provare, e aggiungi che se non lo regge faccia quel che riesce.
 2) ${COME_SPIEGARE}`
 
 const SYSTEM_PRIMA = `Sei il preparatore di CARICO. L'atleta NON ha mai registrato questo esercizio,
