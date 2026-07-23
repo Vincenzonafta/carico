@@ -87,10 +87,13 @@ const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che registr
 // data = giorno dell'allenamento (ISO). Senza, la Shortcut usa la data CORRENTE e registra
 // un allenamento di ieri sotto oggi: va passata esplicitamente.
 type HealthPayload = { durata: number; calorie: number; distanza: number; data?: string }
-// Apre la Shortcut passando il JSON {durata(min), calorie, distanza, data} come input (solo iOS via shortcuts://).
+// JSON passato alla Shortcut (solo iOS). Chiavi da leggere lato Shortcut:
+//   inizio  = data/ora di inizio ISO (es. "2026-07-22T12:00:00") → la data dell'allenamento
+//   durata  = minuti (Salute calcola la fine da inizio + durata)
+//   calorie = kcal stimate ·  distanza = metri (0 per la palestra)
 const inviaSalute = (p: HealthPayload) => {
-  // fine = mezzogiorno del giorno, così il fuso non fa scivolare l'allenamento al giorno prima/dopo
-  const payload = { ...p, data: p.data ?? today(), fine: `${p.data ?? today()}T12:00:00` }
+  // inizio a mezzogiorno del giorno: il fuso non fa scivolare l'allenamento al giorno prima/dopo
+  const payload = { inizio: `${p.data ?? today()}T12:00:00`, durata: p.durata, calorie: p.calorie, distanza: p.distanza }
   window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(JSON.stringify(payload))}`
 }
 const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: device nuovo, si può ripristinare dal cloud
