@@ -252,7 +252,11 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 /* ============ overlay, dialog, picker ============ */
 .overlay { position:fixed; inset:0; background:rgba(3,5,8,.72); z-index:50;
   display:flex; align-items:flex-end; justify-content:center; }
-.overlay.center { align-items:center; padding:0 18px; }
+.overlay.center { align-items:center; padding:18px; }
+/* qualsiasi dialogo centrato (riepilogo con tanti record, calcolatori…) non deve mai
+   superare lo schermo: si limita all'altezza visibile e scrolla, così i tasti in fondo
+   restano SEMPRE raggiungibili. Prima con molti PR i pulsanti finivano fuori schermo. */
+.overlay.center > * { max-height:calc(100dvh - 36px); overflow-y:auto; }
 .dlg { width:100%; max-width:394px; background:var(--surf); border:1px solid var(--hair);
   border-radius:20px; padding:20px; }
 .dlg .dt { font-size:19px; font-weight:800; }
