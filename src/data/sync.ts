@@ -106,6 +106,11 @@ export function serieLoggata(esercizio: string, peso: number, reps: number, rpe:
 // Spunta tolta nell'app: la riga cloud sparisce (il DB deve restare la verità)
 export function serieRimossa(id: string) { enq({ op: 'del', t: 'serie', id }) }
 
+// Serie corretta a posteriori dal calendario: aggiorna la riga cloud (peso/reps/rpe)
+export function serieModificata(id: string, patch: { peso?: number; reps?: number; rpe?: number | null }) {
+  enq({ op: 'upd', t: 'serie', id, patch })
+}
+
 export function sessioneChiusa() {
   if (!sess) return
   enq({ op: 'upd', t: 'sessione', id: sess.id, patch: { fine: new Date().toISOString() } })
@@ -156,7 +161,7 @@ export function configSalvata(st: Record<string, unknown>) {
   const dati = {
     schede: st.schede, activeScheda: st.activeScheda, activeDay: st.activeDay,
     customExercises: st.customExercises, extras: st.extras, sessionEx: st.sessionEx,
-    exVideo: st.exVideo, refMax: st.refMax, target: st.target,
+    exVideo: st.exVideo, refMax: st.refMax, durate: st.durate, target: st.target,
     // chat troncata: il blob è uno snapshot, una conversazione lunga lo gonfierebbe senza motivo
     chat: Array.isArray(st.chat) ? st.chat.slice(-60) : [],
     mealPlan: st.mealPlan, goal: st.goal, settings: st.settings, customFoods: st.customFoods,

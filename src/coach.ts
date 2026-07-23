@@ -46,6 +46,9 @@ export type State = {
   // numero VERO invece che alla stima dello storico (che manca se il PR è precedente all'app).
   refMax: Record<string, { kg: number; reps: number }>
   chat: ChatMsg[] // conversazione col coach, salvata: si perdeva cambiando scheda
+  // durata dell'allenamento in SECONDI per data. Salvata a "Finito" e correggibile dal
+  // calendario: il cronometro si azzera al ricarico dell'app e usciva sbagliata.
+  durate: Record<string, number>
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
@@ -632,7 +635,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [],
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [], durate: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -663,7 +666,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [],
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [], durate: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },

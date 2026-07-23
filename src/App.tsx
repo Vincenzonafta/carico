@@ -13,7 +13,7 @@ import {
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
-import { serieLoggata, serieRimossa, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
+import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
 import { chiamaCoach, proponiPeso, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
@@ -600,7 +600,7 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
         ))}
       </div>
       {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
-      {tab === 'cal' && <Calendario s={s} onRepeat={repeatDay} onDelete={deleteDay} />}
+      {tab === 'cal' && <Calendario s={s} setS={setS} onRepeat={repeatDay} onDelete={deleteDay} />}
       {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
       {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
     </>
@@ -1733,7 +1733,8 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
-    setS({ ...s, finishedDate: today(), finishedKcal: kcal, finishedHealth: health }) // conclusa + payload Salute
+    // durata salvata per data: sopravvive al ricarico dell'app e resta correggibile dal calendario
+    setS({ ...s, finishedDate: today(), finishedKcal: kcal, finishedHealth: health, durate: { ...(s.durate ?? {}), [today()]: durataSec } })
   }
   const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
   const abort = async () => {
@@ -2930,7 +2931,7 @@ function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) 
   )
 }
 
-function Calendario({ s, onRepeat, onDelete }: { s: State; onRepeat: (date: string) => void; onDelete: (date: string) => void }) {
+function Calendario({ s, setS, onRepeat, onDelete }: { s: State; setS: (u: State) => void; onRepeat: (date: string) => void; onDelete: (date: string) => void }) {
   const [off, setOff] = useState(0)
   const [sel, setSel] = useState<string | null>(null)
   const base = new Date(); base.setDate(1); base.setMonth(base.getMonth() + off)
@@ -2944,6 +2945,32 @@ function Calendario({ s, onRepeat, onDelete }: { s: State; onRepeat: (date: stri
   const monthVol = volume(s.log.filter((l) => monthDates.includes(l.date)))
   const selSum = sel ? sessionSummary(s.log, sel) : null
   const selExs = sel ? [...new Set(s.log.filter((l) => l.date === sel).map((x) => x.ex))] : []
+  const [editSets, setEditSets] = useState(false) // il dettaglio-giorno parte in lettura, si apre in modifica
+
+  // Correzione a posteriori di una serie: aggiorna l'indice GLOBALE nel log + specchia sul cloud.
+  const patchSet = (gi: number, patch: { kg?: number; reps?: number; rpe?: number | null }) => {
+    const l = s.log[gi]; if (!l) return
+    const next = [...s.log]; next[gi] = { ...l, ...patch }
+    setS({ ...s, log: next })
+    if (l.id) serieModificata(l.id, {
+      ...(patch.kg != null ? { peso: patch.kg } : {}), ...(patch.reps != null ? { reps: patch.reps } : {}),
+      ...('rpe' in patch ? { rpe: patch.rpe } : {}),
+    })
+  }
+  const delSet = (gi: number) => {
+    const l = s.log[gi]; if (!l) return
+    if (l.id) serieRimossa(l.id)
+    setS({ ...s, log: s.log.filter((_, j) => j !== gi) })
+  }
+  // durata del giorno selezionato, in minuti interi (correggibile: il cronometro usciva sbagliato)
+  const durataMin = sel ? Math.round((s.durate?.[sel] ?? 0) / 60) : 0
+  const setDurataMin = (min: number) => sel && setS({ ...s, durate: { ...(s.durate ?? {}), [sel]: Math.max(0, min) * 60 } })
+  const inviaSaluteGiorno = () => {
+    if (!sel) return
+    const durSec = s.durate?.[sel] ?? 0
+    const peso = s.body.length ? s.body[s.body.length - 1].kg : 75
+    inviaSalute({ durata: Math.round(durSec / 60), calorie: stimaCalorie(durSec, peso), distanza: 0 })
+  }
   const rpes = s.log.filter((l) => l.rpe != null).map((l) => l.rpe as number)
   const avgRpe = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : 0
   return (
@@ -2990,19 +3017,48 @@ function Calendario({ s, onRepeat, onDelete }: { s: State; onRepeat: (date: stri
             <div className="tile"><div className="l">Tonnellaggio</div><div className="v num">{fmt(selSum.tonnage / 1000)} <span className="sm mut">t</span></div></div>
             <div className="tile"><div className="l">Serie</div><div className="v num">{selSum.sets}</div></div>
           </div>
+          {/* durata correggibile: il cronometro si azzera al ricarico dell'app e usciva sbagliato */}
+          <div className="row" style={{ marginTop: 10, gap: 8 }}>
+            <span className="l" style={{ flex: 1 }}>Durata (min)</span>
+            <input type="number" inputMode="numeric" value={durataMin || ''} placeholder="—"
+              onChange={(e) => setDurataMin(+e.target.value)} style={{ width: 90, textAlign: 'center' }} />
+          </div>
+
+          <div className="row" style={{ marginTop: 14, justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>Serie</h2>
+            <button className="ghost" style={{ width: 'auto', padding: '6px 12px', fontSize: 12.5 }} onClick={() => setEditSets((v) => !v)}>{editSets ? 'Fatto' : '✎ Correggi'}</button>
+          </div>
           <div style={{ marginTop: 6 }}>
             {selExs.map((ex) => {
-              const ss = s.log.filter((x) => x.date === sel && x.ex === ex)
+              // indici GLOBALI nel log: servono a modificare la riga giusta
+              const idxs = s.log.map((l, gi) => ({ l, gi })).filter((x) => x.l.date === sel && x.l.ex === ex)
               return (
-                <div className="set" key={ex}>
-                  <span className="exbar" style={{ background: mcolor(muscleOf(s, ex)), minHeight: 26 }} />
-                  <b className="sm">{ex}</b>
-                  <span className="meta num" style={{ marginLeft: 'auto' }}>{fmt(ss[0].kg)} · {ss.map((x) => x.reps).join('/')}</span>
+                <div key={ex} style={{ marginTop: 8 }}>
+                  <div className="set" style={{ paddingBottom: 2 }}>
+                    <span className="exbar" style={{ background: mcolor(muscleOf(s, ex)), minHeight: 26 }} />
+                    <b className="sm">{ex}</b>
+                    {!editSets && <span className="meta num" style={{ marginLeft: 'auto' }}>{fmt(idxs[0].l.kg)} · {idxs.map((x) => x.l.reps).join('/')}</span>}
+                  </div>
+                  {editSets && idxs.map(({ l, gi }, k) => (
+                    <div className="calrow" key={gi}>
+                      <span className="sidx">{k + 1}</span>
+                      <input type="number" inputMode="decimal" value={l.kg} onFocus={(e) => e.target.select()} onChange={(e) => patchSet(gi, { kg: +e.target.value })} />
+                      <span className="x">×</span>
+                      <input type="number" inputMode="numeric" value={l.reps} onFocus={(e) => e.target.select()} onChange={(e) => patchSet(gi, { reps: +e.target.value })} />
+                      <select value={l.rpe ?? ''} onChange={(e) => patchSet(gi, { rpe: e.target.value === '' ? null : +e.target.value })}>
+                        <option value="">RPE</option>
+                        {RPE_VALS.map((v) => <option key={v} value={v}>{fmt(v)}</option>)}
+                      </select>
+                      <span className="del" onClick={() => delSet(gi)}>✕</span>
+                    </div>
+                  ))}
                 </div>
               )
             })}
           </div>
-          <button style={{ marginTop: 12 }} onClick={() => onRepeat(sel)}>↻ Ripeti questa seduta oggi</button>
+
+          {isIOS() && <button className="ghost" style={{ marginTop: 14 }} onClick={inviaSaluteGiorno}>🍎 Invia a Salute</button>}
+          <button style={{ marginTop: 8 }} onClick={() => onRepeat(sel)}>↻ Ripeti questa seduta oggi</button>
           <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={() => onDelete(sel)}>Elimina questo allenamento</button>
         </div>
       )}
