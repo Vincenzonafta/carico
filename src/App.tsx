@@ -1434,7 +1434,20 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
 }) {
   // Esercizi tolti SOLO da questa seduta: la scheda resta intatta.
   const skipped = new Set((s.sessionEx ?? []).filter((x) => x.date === today() && x.skip).map((x) => x.ex))
-  const plan = curItems(s).flatMap((it, i, arr) => {
+  // L'allenamento è una COPIA della scheda: se esiste una copia per OGGI (stesso scheda/giorno)
+  // il piano viene da lì, altrimenti dalla scheda viva. La copia nasce alla prima modifica in corsa.
+  const copiaOk = s.allenamento && s.allenamento.date === today() && s.allenamento.scheda === s.activeScheda && s.allenamento.day === s.activeDay
+  const baseItems = copiaOk ? s.allenamento!.items : curItems(s)
+  // Garantisce la copia del giorno su una bozza di stato e ne torna gli items da mutare.
+  const ensureCopia = (d: State): PlanItem[] => {
+    if (!(d.allenamento && d.allenamento.date === today() && d.allenamento.scheda === s.activeScheda && d.allenamento.day === s.activeDay)) {
+      d.allenamento = { date: today(), scheda: s.activeScheda, day: s.activeDay, items: structuredClone(curItems(s)) }
+    }
+    return d.allenamento.items
+  }
+  // Modifica il giorno in allenamento SENZA toccare la scheda: crea la copia se manca, poi muta lei.
+  const mutaGiorno = (fn: (items: PlanItem[]) => void) => { const d = structuredClone(s); fn(ensureCopia(d)); setS(d) }
+  const plan = baseItems.flatMap((it, i, arr) => {
     if (skipped.has(it.ex)) return []
     // se il compagno di superset è saltato oggi sciolgo la coppia: senza, il lock
     // resterebbe in attesa di una serie di un esercizio che oggi non c'è
@@ -1527,19 +1540,20 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   }
 
   // Ingranaggio: opzioni runtime sull'esercizio in corso
+  // Extra → la sua lista per-data; esercizio di scheda → la COPIA del giorno, mai la scheda.
   const patchItem = (ex: string, isExtra: boolean, fn: (t: PlanItem) => void) => {
-    const d = structuredClone(s)
-    const t = isExtra
-      ? d.extras.find((e) => e.date === today() && e.item.ex === ex)?.item
-      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === ex)
-    if (t) { fn(t); setS(d) }
+    if (isExtra) {
+      const d = structuredClone(s)
+      const t = d.extras.find((e) => e.date === today() && e.item.ex === ex)?.item
+      if (t) { fn(t); setS(d) }
+      return
+    }
+    mutaGiorno((items) => { const t = items.find((x) => x.ex === ex); if (t) fn(t) })
   }
-  const applyOrder = (order: number[]) => {
-    const d = structuredClone(s)
-    const day2 = d.schede[s.activeScheda].days[s.activeDay]
-    day2.items = order.map((i) => day2.items[i])
-    setS(d)
-  }
+  // il riordino agisce sulla copia del giorno, non riordina la scheda
+  const applyOrder = (order: number[]) => mutaGiorno((items) => {
+    const orig = items.slice(); items.length = 0; items.push(...order.map((i) => orig[i]))
+  })
 
   const toggleSuperset = (it: PlanItem) => { patchItem(it.ex, false, (t) => { t.ss = !t.ss }); setMenu(null) }
   const doSwap = (name: string) => {
@@ -1560,10 +1574,11 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     if (items.some((x) => x.ex === (existing?.name ?? name))) return toast('Esercizio già in seduta')
     const muscle = existing?.muscle ?? (v![1] || 'Altro')
     const d = structuredClone(s)
-    if (!existing) d.customExercises.push({ name, muscle })
+    if (!existing) d.customExercises.push({ name, muscle }) // libreria: aggiunta legittima
+    // esercizio di scheda → la COPIA del giorno, mai la scheda
     const t = swap.isExtra
       ? d.extras.find((e) => e.date === today() && e.item.ex === swap.ex)?.item
-      : d.schede[s.activeScheda].days[s.activeDay].items.find((x) => x.ex === swap.ex)
+      : ensureCopia(d).find((x) => x.ex === swap.ex)
     if (t) { t.ex = existing?.name ?? name; t.muscle = muscle }
     setS(d); setSwap(null)
     toast('Esercizio sostituito')

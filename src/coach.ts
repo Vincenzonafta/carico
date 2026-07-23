@@ -49,6 +49,11 @@ export type State = {
   // durata dell'allenamento in SECONDI per data. Salvata a "Finito" e correggibile dal
   // calendario: il cronometro si azzera al ricarico dell'app e usciva sbagliata.
   durate: Record<string, number>
+  // Copia di lavoro del giorno in allenamento: l'allenamento è una COPIA della scheda, così
+  // aggiungere/togliere serie o cambiare esercizio in corsa NON tocca la scheda originale.
+  // Legata a (data, scheda, giorno): se non combaciano si riparte dal template. Nasce alla
+  // prima modifica in allenamento; se non modifichi nulla resta null e si legge la scheda viva.
+  allenamento?: { date: string; scheda: number; day: number; items: PlanItem[] }
   checkin: Checkin; checkins: Checkin[]; log: SetLog[]
   meals: Meal[]; customFoods: Food[]; target: { kcal: number; protein: number; carbs: number; fat: number; water: number }
   mealPlan: MealPlan | null
