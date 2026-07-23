@@ -84,10 +84,14 @@ const Dumb = () => (
 const LS = 'carico-v1'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
 const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che registra l'allenamento in Salute
-type HealthPayload = { durata: number; calorie: number; distanza: number }
-// Apre la Shortcut passando il JSON {durata(min), calorie, distanza} come input (solo iOS via shortcuts://).
+// data = giorno dell'allenamento (ISO). Senza, la Shortcut usa la data CORRENTE e registra
+// un allenamento di ieri sotto oggi: va passata esplicitamente.
+type HealthPayload = { durata: number; calorie: number; distanza: number; data?: string }
+// Apre la Shortcut passando il JSON {durata(min), calorie, distanza, data} come input (solo iOS via shortcuts://).
 const inviaSalute = (p: HealthPayload) => {
-  window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(JSON.stringify(p))}`
+  // fine = mezzogiorno del giorno, così il fuso non fa scivolare l'allenamento al giorno prima/dopo
+  const payload = { ...p, data: p.data ?? today(), fine: `${p.data ?? today()}T12:00:00` }
+  window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(JSON.stringify(payload))}`
 }
 const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: device nuovo, si può ripristinare dal cloud
 
@@ -1438,7 +1442,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const items = [...plan, ...extras]
   const day = curDay(s)
   const lib = [...EXERCISES, ...s.customExercises]
-  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload } | null>(null)
+  const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload; startMs: number | null; endMs: number } | null>(null)
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
   const [playVid, setPlayVid] = useState<{ url: string; ex: string; i: number; title: string } | null>(null)
@@ -1723,13 +1727,21 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     if (rm.id) serieRimossa(rm.id) // il DB deve restare la verità: via anche dal cloud
     setS({ ...s, log: s.log.filter((_, j) => j !== idx) })
   }
+  // Invio a Salute derivato dalla durata SALVATA per quella data: così correggere i minuti
+  // aggiorna anche ciò che mandi, e la data corretta impedisce che finisca sotto oggi.
+  const inviaSaluteData = (date: string) => {
+    const durSec = s.durate?.[date] ?? 0
+    const peso = s.body.length ? s.body[s.body.length - 1].kg : 75
+    inviaSalute({ durata: Math.round(durSec / 60), calorie: stimaCalorie(durSec, peso), distanza: 0, data: date })
+  }
   const finish = () => {
     if (!anyToday) return toast('Segna almeno una serie prima di chiudere')
-    const durataSec = workoutStart ? Math.round((Date.now() - workoutStart) / 1000) : 0
+    const endMs = Date.now()
+    const durataSec = workoutStart ? Math.round((endMs - workoutStart) / 1000) : 0
     const pesoCorporeo = s.body.length ? s.body[s.body.length - 1].kg : 75
     const kcal = stimaCalorie(durataSec, pesoCorporeo) // stima da mandare ad Apple Health
-    const health: HealthPayload = { durata: Math.round(durataSec / 60), calorie: kcal, distanza: 0 }
-    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal, health })
+    const health: HealthPayload = { durata: Math.round(durataSec / 60), calorie: kcal, distanza: 0, data: today() }
+    setSummary({ ...sessionSummary(s.log, today()), prs: prsForSession(s.log, today()), kcal, health, startMs: workoutStart, endMs })
     setWorkoutStart(null) // finito è finito: fermo il cronometro dell'allenamento
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
@@ -1771,7 +1783,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
             <div className="prband" key={ex}><span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div></div>
           ))}
         </div>
-        {isIOS() && s.finishedHealth && <button style={{ marginTop: 14 }} onClick={() => inviaSalute(s.finishedHealth!)}>🍎 Invia a Salute</button>}
+        {isIOS() && <button style={{ marginTop: 14 }} onClick={() => inviaSaluteData(today())}>🍎 Invia a Salute</button>}
         <p className="sm mut" style={{ textAlign: 'center', margin: '14px 0 0' }}>Torna domani, oppure scegli un altro giorno in <b>Schede</b>.</p>
         <button className="ghost" style={{ marginTop: 14 }} onClick={() => setS({ ...s, finishedDate: undefined })}>Riapri e modifica l'allenamento</button>
       </>
@@ -2160,7 +2172,22 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <span className="star">★</span><div><div className="pt2">Nuovo record</div><div className="pv2">{ex}</div></div>
               </div>
             ))}
-            {isIOS() && <button className="ghost" style={{ marginTop: 12 }} onClick={() => inviaSalute(summary.health)}>🍎 Invia a Salute</button>}
+            {/* conferma durata: se conosco l'inizio mostro gli orari, sennò solo i minuti da confermare */}
+            <div className="card" style={{ marginTop: 12, background: 'var(--surf2)', boxShadow: 'none' }}>
+              <div className="cardh"><b style={{ fontSize: 15 }}>Conferma la durata</b></div>
+              {summary.startMs && (
+                <div className="sm mut" style={{ marginTop: 6 }}>
+                  Iniziato {new Date(summary.startMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} · Finito {new Date(summary.endMs).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+              <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                <span className="l" style={{ flex: 1 }}>Minuti {summary.startMs ? '(correggi se serve)' : "(il cronometro s'è azzerato: inseriscili)"}</span>
+                <input type="number" inputMode="numeric" value={Math.round((s.durate?.[today()] ?? 0) / 60) || ''} placeholder="—"
+                  onChange={(e) => setS({ ...s, durate: { ...(s.durate ?? {}), [today()]: Math.max(0, +e.target.value) * 60 } })}
+                  style={{ width: 90, textAlign: 'center' }} />
+              </div>
+            </div>
+            {isIOS() && <button className="ghost" style={{ marginTop: 12 }} onClick={() => inviaSaluteData(today())}>🍎 Invia a Salute</button>}
             <button style={{ marginTop: 8 }} onClick={chiudiSummary}>Chiudi</button>
           </div>
         </div>
@@ -2969,7 +2996,7 @@ function Calendario({ s, setS, onRepeat, onDelete }: { s: State; setS: (u: State
     if (!sel) return
     const durSec = s.durate?.[sel] ?? 0
     const peso = s.body.length ? s.body[s.body.length - 1].kg : 75
-    inviaSalute({ durata: Math.round(durSec / 60), calorie: stimaCalorie(durSec, peso), distanza: 0 })
+    inviaSalute({ durata: Math.round(durSec / 60), calorie: stimaCalorie(durSec, peso), distanza: 0, data: sel })
   }
   const rpes = s.log.filter((l) => l.rpe != null).map((l) => l.rpe as number)
   const avgRpe = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : 0
