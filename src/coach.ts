@@ -152,6 +152,23 @@ export function maxStimato(log: SetLog[], ex: string): number {
 export const muscoloDi = (s: State, ex: string): string =>
   [...EXERCISES, ...s.customExercises].find((e) => e.name === ex)?.muscle ?? lookupMuscle(ex)
 
+// Libreria COMPLETA degli esercizi selezionabili: archivio + personalizzati + tutti quelli
+// già presenti in una scheda o nello storico (es. importati dal parser, che NON stanno in
+// customExercises). Deduplica per nome case-insensitive, primo nome = canonico. Un esercizio
+// esiste "per sempre" e si ritrova ovunque: nel selettore come nella libreria.
+export function libreriaEsercizi(s: State): Exercise[] {
+  const out: Exercise[] = []; const visti = new Set<string>()
+  const add = (name: string, muscle: string) => {
+    const k = name.toLowerCase().trim()
+    if (k && !visti.has(k)) { visti.add(k); out.push({ name, muscle }) }
+  }
+  for (const e of EXERCISES) add(e.name, e.muscle)
+  for (const e of s.customExercises) add(e.name, e.muscle)
+  for (const it of allItems(s)) add(it.ex, it.muscle)
+  for (const l of s.log) add(l.ex, muscoloDi(s, l.ex))
+  return out
+}
+
 // Contesto di un esercizio in UNA seduta: dov'è nell'ordine e quante serie sullo STESSO
 // muscolo erano già state fatte prima. Il log locale è in ordine di esecuzione, quindi si
 // deriva senza salvare nulla. È ciò che rende confrontabili i pesi fra sedute: 80 kg da 1°

@@ -6,7 +6,7 @@ import {
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
-  curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda,
+  curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda, libreriaEsercizi,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
   type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
   foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
@@ -617,7 +617,7 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
 function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State) => void; onStart: () => void; workoutActive: boolean }) {
   const sc = curScheda(s)
   const items = curItems(s)
-  const lib = [...EXERCISES, ...s.customExercises]
+  const lib = libreriaEsercizi(s)
   const [edit, setEdit] = useState<number | null>(null)
   const [imp, setImp] = useState(false); const [text, setText] = useState('')
   const [aiImp, setAiImp] = useState<{ state: 'busy' } | { state: 'preview'; schede: Scheda[] } | null>(null)
@@ -1457,7 +1457,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
   const items = [...plan, ...extras]
   const day = curDay(s)
-  const lib = [...EXERCISES, ...s.customExercises]
+  const lib = libreriaEsercizi(s)
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload; startMs: number | null; endMs: number } | null>(null)
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
   const [rpeCalc, setRpeCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number } | null>(null)
@@ -2881,6 +2881,26 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
   const mus = muscleOf(s, ex)
   const totVol = vols.reduce((a, v) => a + v, 0)
   const dRpe = rpeDelta(s.log, ex)
+  // Elimina l'esercizio dal database: via lo storico (locale + cloud) e i suoi dati per-nome.
+  // NON tocca le schede: se è in una scheda ci resta come esercizio, ma senza storico.
+  const elimina = async () => {
+    const inScheda = allItems(s).some((it) => it.ex === ex)
+    const nSet = s.log.filter((l) => l.ex === ex).length
+    const corpo = `${nSet ? `${nSet} serie registrate verranno cancellate. ` : ''}${inScheda ? 'Resta nelle tue schede (senza storico): per farlo sparire del tutto toglilo prima dalle schede.' : 'Sparirà dalla libreria.'} Non si può annullare.`
+    if (!(await confirmDlg(`Eliminare «${ex}»?`, corpo))) return
+    for (const l of s.log) if (l.ex === ex && l.id) serieRimossa(l.id) // via anche dal cloud
+    if ((s.exVideo ?? {})[ex]) void deleteVideo(s.exVideo[ex])
+    const d = structuredClone(s)
+    d.log = d.log.filter((l) => l.ex !== ex)
+    d.customExercises = d.customExercises.filter((e) => e.name.toLowerCase() !== ex.toLowerCase())
+    const senza = (o?: Record<string, unknown>) => { const c = { ...(o ?? {}) }; delete c[ex]; return c }
+    d.refMax = senza(d.refMax) as State['refMax']
+    d.exVideo = senza(d.exVideo) as State['exVideo']
+    d.exDesc = senza(d.exDesc) as State['exDesc']
+    d.sessionEx = (d.sessionEx ?? []).filter((x) => x.ex !== ex)
+    setS(d)
+    onClose()
+  }
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -2941,6 +2961,7 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
             })}
             {!ds.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Mai allenato: parti oggi.</p>}
           </div>
+          <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
         </div>
       </div>
     </div>
@@ -2948,17 +2969,8 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
 }
 
 function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) {
-  // Libreria COMPLETA: default + personalizzati + tutti quelli mai usati o messi in scheda.
-  // Deduplica per nome (case-insensitive), tenendo il primo nome incontrato come canonico:
-  // così un esercizio creato "esiste per sempre" ed è sempre lo stesso, con il suo storico.
-  const exList = useMemo(() => {
-    const out: string[] = []; const visti = new Set<string>()
-    for (const n of [...EXERCISES.map((e) => e.name), ...s.customExercises.map((e) => e.name), ...allItems(s).map((p) => p.ex), ...s.log.map((l) => l.ex)]) {
-      const k = n.toLowerCase().trim()
-      if (!visti.has(k)) { visti.add(k); out.push(n) }
-    }
-    return out
-  }, [s])
+  // Stessa libreria completa del selettore (default + personalizzati + usati/in scheda)
+  const exList = useMemo(() => libreriaEsercizi(s).map((e) => e.name), [s])
   const [q, setQ] = useState('')
   const [mus, setMus] = useState<string | null>(null)
   const groups = useMemo(() => [...new Set(exList.map((e) => muscleOf(s, e)))], [exList, s])
@@ -3477,7 +3489,7 @@ function Cloud() {
 }
 
 function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
-  const lib = [...EXERCISES, ...s.customExercises]
+  const lib = libreriaEsercizi(s)
   const setOpt = (k: 'sound' | 'vibrate', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
   const setTarget = (k: 'kcal' | 'protein', v: number) => setS({ ...s, target: { ...s.target, [k]: v } })
   const editGoal = async () => {
