@@ -609,7 +609,7 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
       {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
       {tab === 'cal' && <Calendario s={s} setS={setS} onRepeat={repeatDay} onDelete={deleteDay} />}
       {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
-      {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
+      {statsEx && <ExStats s={s} setS={setS} ex={statsEx} onClose={() => setStatsEx(null)} />}
     </>
   )
 }
@@ -2087,9 +2087,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           {/* senza questo un esercizio tolto per sbaglio sarebbe irrecuperabile: sparisce
               dalla lista e con essa il suo menu. Azzero solo skip: note e video restano. */}
           {skipped.size > 0 && (
-            <button className="ghost" style={{ marginTop: 10, fontSize: 13.5 }}
+            <button className="ghost" style={{ marginTop: 10 }}
               onClick={() => setS({ ...s, sessionEx: (s.sessionEx ?? []).map((x) => (x.date === today() && x.skip ? { ...x, skip: undefined } : x)) })}>
-              ↩ Rimetti {skipped.size === 1 ? 'l\'esercizio tolto' : `i ${skipped.size} esercizi tolti`} da oggi
+              Rimetti {skipped.size === 1 ? 'l\'esercizio tolto' : `i ${skipped.size} esercizi tolti`}
             </button>
           )}
         </>
@@ -2143,7 +2143,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           onPick={addExtra} onCreate={createAndAddExtra} />
       )}
       {videoInput}{videoAttesa}
-      {statsEx && <ExStats s={s} ex={statsEx} onClose={() => setStatsEx(null)} />}
+      {statsEx && <ExStats s={s} setS={setS} ex={statsEx} onClose={() => setStatsEx(null)} />}
       {playVid && (
         <div className="overlay center" onClick={() => setPlayVid(null)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()}>
@@ -2869,7 +2869,7 @@ function Sparkline({ values, color = '#C9F94E', h = 90 }: { values: number[]; co
 }
 
 // Scheda statistiche di un singolo esercizio (foglio a tutto schermo)
-function ExStats({ s, ex, onClose }: { s: State; ex: string; onClose: () => void }) {
+function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void; ex: string; onClose: () => void }) {
   const ds = historyDates(s.log, ex)
   const best = ds.length ? bestE1rm(s.log, ex) : 0
   const rec = record(s.log, ex)
@@ -2903,6 +2903,19 @@ function ExStats({ s, ex, onClose }: { s: State; ex: string; onClose: () => void
               {ds.length < 2 ? '—' : (dRpe >= 0 ? '▲ +' : '▼ ') + fmt(Math.abs(dRpe))}</div></div>
             <div className="tile"><div className="l">Tonnellaggio tot</div><div className="v num">{fmt(totVol / 1000)} <span className="sm mut">t</span></div></div>
           </div>
+
+          {/* dimostrazione: la stessa di (esercizio) vista in allenamento, qui in sola lettura */}
+          {(s.exVideo ?? {})[ex] && <Video className="fhero fvideo" src={s.exVideo[ex]} />}
+
+          {/* descrizione dell'esercizio, per NOME: appunti di tecnica che valgono sempre */}
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="cardh"><b>Descrizione</b></div>
+            <div className="cardh-div" />
+            <textarea className="notebox" key={ex} rows={3} defaultValue={(s.exDesc ?? {})[ex] ?? ''}
+              placeholder="Come si esegue, cue, errori da evitare… (facoltativo)"
+              onBlur={(e) => { const v = e.target.value.trim(); if (v !== ((s.exDesc ?? {})[ex] ?? '')) { const d = { ...(s.exDesc ?? {}) }; if (v) d[ex] = v; else delete d[ex]; setS({ ...s, exDesc: d }) } }} />
+          </div>
+
           {ds.length > 1 && (<>
             <h2>1RM stimato</h2>
             <div className="card"><Sparkline values={ds.map((d) => sessionE1rm(s.log, ex, d))} h={72} /></div>
@@ -2935,7 +2948,21 @@ function ExStats({ s, ex, onClose }: { s: State; ex: string; onClose: () => void
 }
 
 function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) {
-  const exList = useMemo(() => [...new Set([...allItems(s).map((p) => p.ex), ...s.log.map((l) => l.ex)])], [s])
+  // Libreria COMPLETA: default + personalizzati + tutti quelli mai usati o messi in scheda.
+  // Deduplica per nome (case-insensitive), tenendo il primo nome incontrato come canonico:
+  // così un esercizio creato "esiste per sempre" ed è sempre lo stesso, con il suo storico.
+  const exList = useMemo(() => {
+    const out: string[] = []; const visti = new Set<string>()
+    for (const n of [...EXERCISES.map((e) => e.name), ...s.customExercises.map((e) => e.name), ...allItems(s).map((p) => p.ex), ...s.log.map((l) => l.ex)]) {
+      const k = n.toLowerCase().trim()
+      if (!visti.has(k)) { visti.add(k); out.push(n) }
+    }
+    return out
+  }, [s])
+  const [q, setQ] = useState('')
+  const [mus, setMus] = useState<string | null>(null)
+  const groups = useMemo(() => [...new Set(exList.map((e) => muscleOf(s, e)))], [exList, s])
+  const filtered = exList.filter((e) => (!mus || muscleOf(s, e) === mus) && e.toLowerCase().includes(q.toLowerCase().trim()))
   const mv = muscleVolume(s)
   const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
   return (
@@ -2951,27 +2978,37 @@ function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) 
         )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessuna serie negli ultimi 7 giorni.</p>}
         <p className="hint">Target: 10-20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = poco allenato</p>
       </div>
-      <h2>Esercizi</h2>
-      {exList.map((ex) => {
-        const ds = historyDates(s.log, ex)
-        const best = ds.length ? bestE1rm(s.log, ex) : 0
-        const last = ds.length ? ds[ds.length - 1] : null
-        const daysAgo = last ? Math.floor((Date.now() - new Date(last + 'T12:00').getTime()) / 86400000) : null
-        const mus = muscleOf(s, ex)
-        return (
-          <div className="navcard" key={ex} onClick={() => onOpen(ex)}>
-            <span className="exbar" style={{ background: mcolor(mus) }} />
-            <div style={{ minWidth: 0 }}>
-              <b>{ex}</b>
-              <div className="meta num">
-                {best ? fmt(best) + ' kg 1RM' : 'mai fatto'}
-                {daysAgo != null && <> · <span style={daysAgo > 10 ? { color: 'var(--amber)' } : undefined}>{daysAgo === 0 ? 'oggi' : daysAgo + ' gg fa'}</span></>}
+      <h2>Esercizi · {exList.length}</h2>
+      <input placeholder="Cerca esercizio…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
+      <div className="chips scrollx" style={{ marginTop: 8 }}>
+        <button className={'chip' + (mus === null ? ' on' : '')} onClick={() => setMus(null)}>Tutti</button>
+        {groups.map((g) => <button key={g} className={'chip' + (mus === g ? ' on' : '')} onClick={() => setMus(g)}>{g}</button>)}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        {filtered.map((ex) => {
+          const ds = historyDates(s.log, ex)
+          const best = ds.length ? bestE1rm(s.log, ex) : 0
+          const last = ds.length ? ds[ds.length - 1] : null
+          const daysAgo = last ? Math.floor((Date.now() - new Date(last + 'T12:00').getTime()) / 86400000) : null
+          const mm = muscleOf(s, ex)
+          const custom = s.customExercises.some((e) => e.name === ex)
+          return (
+            <div className="navcard" key={ex} onClick={() => onOpen(ex)}>
+              <span className="exbar" style={{ background: mcolor(mm) }} />
+              <div style={{ minWidth: 0 }}>
+                <b>{ex}{custom && <span className="stag" style={{ marginLeft: 8 }}>tuo</span>}</b>
+                <div className="meta num">
+                  <span style={{ color: mcolor(mm) }}>{mm}</span>
+                  {' · '}{best ? fmt(best) + ' kg 1RM' : 'mai fatto'}
+                  {daysAgo != null && <> · <span style={daysAgo > 10 ? { color: 'var(--amber)' } : undefined}>{daysAgo === 0 ? 'oggi' : daysAgo + ' gg fa'}</span></>}
+                </div>
               </div>
+              <span className="chev">›</span>
             </div>
-            <span className="chev">›</span>
-          </div>
-        )
-      })}
+          )
+        })}
+        {!filtered.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Nessun esercizio trovato.</p>}
+      </div>
     </>
   )
 }

@@ -41,6 +41,8 @@ export type State = {
   // perché è una proprietà dell'esercizio in sé — se la panca compare in tre schede,
   // la dimostrazione è la stessa e la registri una volta sola.
   exVideo: Record<string, string>
+  // Descrizione per NOME esercizio (come exVideo): appunti su esecuzione/tecnica, valgono sempre.
+  exDesc: Record<string, string>
   // Massimale di RIFERIMENTO scritto dall'utente, come serie {kg, reps}: reps=1 è un 1RM vero,
   // altrimenti è il PR di ripetizioni e Epley lo converte. Ancora le proposte a % e RPE a un
   // numero VERO invece che alla stima dello storico (che manca se il PR è precedente all'app).
@@ -640,7 +642,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [], durate: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -671,7 +673,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, refMax: {}, chat: [], durate: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {},
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },
