@@ -2,7 +2,7 @@
 // Structured output (responseSchema): Gemini NON può produrre un formato diverso dal nostro.
 // A valle c'è comunque l'ANTEPRIMA obbligatoria: si importa solo dopo conferma dell'utente.
 import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType } from '../coach'
-import { MODEL } from './model'
+import { postGemini } from './gemini'
 
 const PROMPT = `Estrai TUTTO il programma di allenamento da questo documento (tabella, foto o testo, in qualsiasi lingua).
 
@@ -128,25 +128,13 @@ ${PROMPT}`
     r.readAsDataURL(file)
   })
   if (!b64) throw new Error('File vuoto o non leggibile')
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [
-        { inlineData: { mimeType: file.type || 'application/pdf', data: b64 } },
-        { text: istruzioni },
-      ] }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA },
-    }),
+  const j = await postGemini(apiKey, {
+    contents: [{ role: 'user', parts: [
+      { inlineData: { mimeType: file.type || 'application/pdf', data: b64 } },
+      { text: istruzioni },
+    ] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA },
   })
-  if (!r.ok) {
-    const err = await r.json().catch(() => null) as { error?: { message?: string } } | null
-    const msg = err?.error?.message ?? r.statusText
-    if (r.status === 400 && /api key/i.test(msg)) throw new Error('Chiave API non valida: controllala in Profilo → ⚙ → Coach IA.')
-    if (r.status === 429) throw new Error('Limite richieste raggiunto: riprova tra un minuto.')
-    throw new Error('Errore IA: ' + msg)
-  }
-  const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
   let raw: unknown
   try { raw = JSON.parse(testo) } catch { throw new Error('L\'IA non ha prodotto un formato valido: riprova.') }

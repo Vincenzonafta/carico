@@ -4,7 +4,7 @@
 // Tool use: Gemini può chiamare gli strumenti (src/data/tools.ts) per leggere i dati REALI
 // dal database — storico con recuperi misurati, seduta in corso, check-in, nutrizione.
 import { TOOL_DECLS, eseguiTool } from '../data/tools'
-import { MODEL } from './model'
+import { postGemini } from './gemini'
 import type { ChatMsg } from '../coach'
 
 export type { ChatMsg } // il tipo vive nel dominio (lo stato lo salva), qui si ri-esporta
@@ -98,28 +98,16 @@ ${COME_SPIEGARE}`
  */
 export async function proponiPeso(apiKey: string, contesto: string, base: number, tetto: number): Promise<{ kg: number; delta: number | null; perche: string }> {
   const primaVolta = base <= 0
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: primaVolta ? SYSTEM_PRIMA : SYSTEM_PESO }] },
-      contents: [{ role: 'user', parts: [{ text: contesto }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: primaVolta
-          ? { type: 'object', properties: { kg: { type: 'number' }, perche: { type: 'string' } }, required: ['kg', 'perche'] }
-          : { type: 'object', properties: { delta: { type: 'number' }, perche: { type: 'string' } }, required: ['delta', 'perche'] },
-      },
-    }),
+  const j = await postGemini(apiKey, {
+    systemInstruction: { parts: [{ text: primaVolta ? SYSTEM_PRIMA : SYSTEM_PESO }] },
+    contents: [{ role: 'user', parts: [{ text: contesto }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: primaVolta
+        ? { type: 'object', properties: { kg: { type: 'number' }, perche: { type: 'string' } }, required: ['kg', 'perche'] }
+        : { type: 'object', properties: { delta: { type: 'number' }, perche: { type: 'string' } }, required: ['delta', 'perche'] },
+    },
   })
-  if (!r.ok) {
-    const err = await r.json().catch(() => null) as { error?: { message?: string } } | null
-    const msg = err?.error?.message ?? r.statusText
-    if (r.status === 400 && /api key/i.test(msg)) throw new Error('Chiave API non valida: controllala in Profilo → ⚙ → Coach IA.')
-    if (r.status === 429) throw new Error('Limite di richieste raggiunto: aspetta un minuto e riprova.')
-    throw new Error('Errore del coach: ' + msg)
-  }
-  const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
   let out: { delta?: unknown; kg?: unknown; perche?: unknown }
   try { out = JSON.parse(testo) } catch { throw new Error('Risposta del coach non leggibile: riprova.') }
@@ -143,23 +131,11 @@ export async function chiamaCoach(history: ChatMsg[], apiKey: string, contesto: 
   // 6 giri erano pochi: con una domanda vera il coach incrocia più tabelle e si arrendeva
   // a metà ragionamento. Il tetto resta solo per non girare all'infinito su un modello confuso.
   for (let giro = 0; giro < 16; giro++) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM + '\n\nCONTESTO ATTUALE DELL\'ATLETA:\n' + contesto }] },
-        contents,
-        tools: TOOL_DECLS,
-      }),
-    })
-    if (!r.ok) {
-      const err = await r.json().catch(() => null) as { error?: { message?: string } } | null
-      const msg = err?.error?.message ?? r.statusText
-      if (r.status === 400 && /api key/i.test(msg)) throw new Error('Chiave API non valida: controllala in Profilo → ⚙ → Coach IA.')
-      if (r.status === 429) throw new Error('Limite di richieste raggiunto: aspetta un minuto e riprova.')
-      throw new Error('Errore del coach: ' + msg)
-    }
-    const j = await r.json() as { candidates?: { content?: Content }[] }
+    const j = await postGemini(apiKey, {
+      systemInstruction: { parts: [{ text: SYSTEM + '\n\nCONTESTO ATTUALE DELL\'ATLETA:\n' + contesto }] },
+      contents,
+      tools: TOOL_DECLS,
+    }) as { candidates?: { content?: Content }[] }
     const cand = j.candidates?.[0]?.content
     const calls = cand?.parts?.filter((p) => p.functionCall) ?? []
     if (!calls.length) {
