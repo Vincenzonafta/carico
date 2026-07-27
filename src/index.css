@@ -224,6 +224,10 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .calrow .x { text-align:center; color:var(--mut2); }
 .calrow .del { text-align:center; }
 
+/* "ultima volta": la cosa da battere, in evidenza col bordo lime */
+.lastcard { margin-top:4px; border-color:color-mix(in srgb, var(--lime) 40%, transparent);
+  background:color-mix(in srgb, var(--lime) 7%, var(--surf)); }
+
 /* massimali per ripetizioni: fila di celle peso · n rip. */
 .rmrow { display:flex; gap:8px; overflow-x:auto; padding:2px 0; }
 .rmcell { flex:none; min-width:62px; display:flex; flex-direction:column; align-items:center; gap:2px;

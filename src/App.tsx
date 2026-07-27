@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
-  type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, rpeDelta, e1rm,
+  type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, e1rm,
   e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale, progressione, contestoEsercizio,
-  historyDates, sessionE1rm, bestE1rm, avgRpeOf, record,
+  historyDates, bestE1rm, avgRpeOf, record,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
@@ -2851,6 +2851,33 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
   )
 }
 
+// Grafico più curato: linea + area sfumata + punti, ultimo evidenziato. Solo SVG, niente librerie.
+let grafId = 0
+function Grafico({ values, color = '#C9F94E', h = 128 }: { values: number[]; color?: string; h?: number }) {
+  const gid = useMemo(() => 'grad' + grafId++, [])
+  const W = 320
+  if (values.length < 2) return <p className="sm mut" style={{ margin: '16px 4px' }}>Servono almeno 2 sedute per vedere l'andamento.</p>
+  const min = Math.min(...values), max = Math.max(...values)
+  const pad = (max - min) * 0.18 || Math.max(1, max * 0.05)
+  const lo = min - pad, hi = max + pad
+  const px = 8, top = 12, bot = h - 14
+  const X = (i: number) => px + (i / (values.length - 1)) * (W - 2 * px)
+  const Y = (v: number) => bot - ((v - lo) / (hi - lo)) * (bot - top)
+  const line = values.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ')
+  const area = `M${X(0).toFixed(1)} ${bot} ` + values.map((v, i) => 'L' + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ') + ` L${X(values.length - 1).toFixed(1)} ${bot} Z`
+  return (
+    <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h, display: 'block' }} preserveAspectRatio="none">
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor={color} stopOpacity="0.30" />
+        <stop offset="100%" stopColor={color} stopOpacity="0" />
+      </linearGradient></defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      {values.map((v, i) => <circle key={i} cx={X(i)} cy={Y(v)} r={i === values.length - 1 ? 4.5 : 2.2} fill={color} />)}
+    </svg>
+  )
+}
+
 function Sparkline({ values, color = '#C9F94E', h = 90 }: { values: number[]; color?: string; h?: number }) {
   const W = 300
   if (values.length < 2)
@@ -2873,15 +2900,10 @@ function Sparkline({ values, color = '#C9F94E', h = 90 }: { values: number[]; co
 function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) => void; ex: string; onDeleted: () => void }) {
   const ds = historyDates(s.log, ex)
   const sets = s.log.filter((l) => l.ex === ex && !l.timed && l.kg > 0) // per rep-max e recuperi
-  const best = ds.length ? bestE1rm(s.log, ex) : 0
   const rec = record(s.log, ex)
-  const volOf = (d: string) => s.log.filter((x) => x.ex === ex && x.date === d).reduce((a, x) => a + x.kg * x.reps, 0)
-  const vols = ds.map(volOf)
-  const bestVol = vols.length ? Math.max(...vols) : 0
   const last = ds.length ? ds[ds.length - 1] : null
   const daysAgo = last ? Math.floor((Date.now() - new Date(last + 'T12:00').getTime()) / 86400000) : null
-  const totVol = vols.reduce((a, v) => a + v, 0)
-  const dRpe = rpeDelta(s.log, ex)
+  const lastSets = last ? s.log.filter((x) => x.ex === ex && x.date === last) : []
   const mx = massimale(s, ex)
   // rep-max: peso più alto sollevato per ALMENO n ripetizioni
   const repMax = (n: number) => { const c = sets.filter((l) => l.reps >= n); return c.length ? Math.max(...c.map((l) => l.kg)) : 0 }
@@ -2890,16 +2912,21 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
   const recMedio = recs.length ? Math.round(recs.reduce((a, b) => a + b, 0) / recs.length) : 0
   const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
   const sedute30 = ds.filter((d) => d >= d30).length
-  const recentDs = ds.slice(-6)
-  let cadenza = 0
-  if (recentDs.length > 1) {
-    let tot = 0
-    for (let i = 1; i < recentDs.length; i++) tot += (new Date(recentDs[i]).getTime() - new Date(recentDs[i - 1]).getTime()) / 86400000
-    cadenza = Math.round(tot / (recentDs.length - 1))
-  }
-  const nSerie = sets.length
-  const nReps = sets.reduce((a, l) => a + l.reps, 0)
   const prog = progressione(s, ex)
+
+  // FORZA per seduta = 1RM stimato AGGIUSTATO PER RPE (più onesto di Epley quando l'RPE c'è):
+  // 100x5@7 e 100x5@9 sono lo stesso peso ma forza diversa, e questo lo cattura.
+  const forza = ds.map((d) => {
+    const ss = sets.filter((l) => l.date === d)
+    return ss.length ? Math.max(...ss.map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps)))) : 0
+  }).filter((v) => v > 0)
+  const forzaOra = forza.length ? forza[forza.length - 1] : 0
+  // riferimento ~4 settimane fa: la seduta più vecchia dentro la finestra, così il confronto è onesto
+  const iRef = ds.findIndex((d) => d >= new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10))
+  const forzaRef = forza.length > 1 ? forza[Math.max(0, Math.min(iRef, forza.length - 2))] : 0
+  const deltaForza = forzaRef ? Math.round(((forzaOra - forzaRef) / forzaRef) * 100) : 0
+  // SFORZO: RPE medio per seduta, solo dove c'è (0 = non segnato, lo saltiamo)
+  const sforzo = ds.map((d) => avgRpeOf(s.log, ex, d)).filter((v) => v > 0)
 
   const elimina = async () => {
     const inScheda = allItems(s).some((it) => it.ex === ex)
@@ -2922,21 +2949,23 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
 
   return (
     <div className="plist" style={{ borderTop: 0 }}>
-      <div className="tiles">
-        <div className="tile"><div className="l">1RM stimato</div><div className="v num">{best ? fmt(best) : '—'} <span className="sm mut">kg</span></div></div>
-        <div className="tile"><div className="l">Record serie</div><div className="v num">{rec ? `${fmt(rec.kg)}×${rec.reps}` : '—'}</div></div>
+      {/* ULTIMA VOLTA in cima: è il numero che usi per decidere il carico oggi. */}
+      {lastSets.length > 0 && (
+        <div className="card lastcard">
+          <div className="crumb" style={{ color: 'var(--lime)' }}>Ultima volta · {daysAgo === 0 ? 'oggi' : daysAgo === 1 ? 'ieri' : `${daysAgo} giorni fa`}</div>
+          <div className="num" style={{ fontSize: 21, fontWeight: 800, marginTop: 6, lineHeight: 1.5 }}>
+            {lastSets.map((l, i) => <span key={i}>{l.timed ? `${l.reps}s` : `${fmt(l.kg)}×${l.reps}`}{l.rpe != null ? <span className="mut" style={{ fontWeight: 600 }}>@{fmt(l.rpe)}</span> : ''}{i < lastSets.length - 1 ? '   ' : ''}</span>)}
+          </div>
+          <div className="sm mut" style={{ marginTop: 4 }}>Questo è il tuo riferimento da battere.</div>
+        </div>
+      )}
+
+      {/* essenziali, senza i totali di vanità */}
+      <div className="tiles" style={{ marginTop: 12 }}>
         <div className="tile"><div className="l">Massimale {mx.fonte === 'ref' ? 'tuo' : 'stimato'}</div><div className="v num" style={{ color: mx.fonte === 'ref' ? 'var(--lime)' : undefined }}>{mx.kg ? fmt(round25(mx.kg)) : '—'} <span className="sm mut">kg</span></div></div>
-        <div className="tile"><div className="l">Ultima volta</div><div className="v num" style={daysAgo != null && daysAgo > 10 ? { color: 'var(--amber)' } : undefined}>
-          {daysAgo == null ? 'mai' : daysAgo === 0 ? 'oggi' : `${daysAgo} gg fa`}</div></div>
-        <div className="tile"><div className="l">Trend RPE</div><div className="v num" style={{ color: dRpe >= 1 ? 'var(--amber)' : 'var(--teal)' }}>
-          {ds.length < 2 ? '—' : (dRpe >= 0 ? '▲ +' : '▼ ') + fmt(Math.abs(dRpe))}</div></div>
+        <div className="tile"><div className="l">Record serie</div><div className="v num">{rec ? `${fmt(rec.kg)}×${rec.reps}` : '—'}</div></div>
         <div className="tile"><div className="l">Recupero medio</div><div className="v num">{recMedio ? mmss(recMedio) : '—'}</div></div>
         <div className="tile"><div className="l">Sedute · 30gg</div><div className="v num">{sedute30}</div></div>
-        <div className="tile"><div className="l">Cadenza</div><div className="v num">{cadenza ? `${cadenza} gg` : '—'}</div></div>
-        <div className="tile"><div className="l">Serie totali</div><div className="v num">{nSerie}</div></div>
-        <div className="tile"><div className="l">Reps totali</div><div className="v num">{nReps}</div></div>
-        <div className="tile"><div className="l">Miglior volume</div><div className="v num">{bestVol ? fmt(bestVol / 1000) : '—'} <span className="sm mut">t</span></div></div>
-        <div className="tile"><div className="l">Volume tot</div><div className="v num">{fmt(totVol / 1000)} <span className="sm mut">t</span></div></div>
       </div>
 
       {repMaxes.length > 0 && (<>
@@ -2946,21 +2975,26 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
         </div></div>
       </>)}
 
-      {(s.exVideo ?? {})[ex] && <Video className="fhero fvideo" src={s.exVideo[ex]} />}
+      {/* FORZA: il numero-chiave. 1RM aggiustato per RPE, con la variazione sull'ultimo mese. */}
+      {forza.length > 1 && (<>
+        <h2>Forza nel tempo</h2>
+        <div className="card">
+          <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
+            <b className="num" style={{ fontSize: 28, fontWeight: 800 }}>{fmt(round25(forzaOra))} <span className="sm mut" style={{ fontSize: 14 }}>kg</span></b>
+            {deltaForza !== 0 && <span className="num" style={{ fontWeight: 700, color: deltaForza > 0 ? 'var(--lime)' : 'var(--coral)' }}>{deltaForza > 0 ? '▲ +' : '▼ '}{Math.abs(deltaForza)}% <span className="sm mut">/ mese</span></span>}
+          </div>
+          <div className="sm mut" style={{ margin: '2px 0 8px' }}>1RM stimato, aggiustato per lo sforzo (RPE)</div>
+          <Grafico values={forza} />
+        </div>
+      </>)}
 
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="cardh"><b>Descrizione</b></div>
-        <div className="cardh-div" />
-        <textarea className="notebox" key={ex} rows={3} defaultValue={(s.exDesc ?? {})[ex] ?? ''}
-          placeholder="Come si esegue, cue, errori da evitare… (facoltativo)"
-          onBlur={(e) => { const v = e.target.value.trim(); if (v !== ((s.exDesc ?? {})[ex] ?? '')) { const d = { ...(s.exDesc ?? {}) }; if (v) d[ex] = v; else delete d[ex]; setS({ ...s, exDesc: d }) } }} />
-      </div>
-
-      {ds.length > 1 && (<>
-        <h2>1RM stimato nel tempo</h2>
-        <div className="card"><Sparkline values={ds.map((d) => sessionE1rm(s.log, ex, d))} h={72} /></div>
-        <h2>Volume per seduta</h2>
-        <div className="card"><Sparkline values={vols} color="#31E0B4" h={60} /></div>
+      {/* SFORZO: RPE medio per seduta. Se sale a parità di carico, sei in fatica. */}
+      {sforzo.length > 1 && (<>
+        <h2>Sforzo percepito</h2>
+        <div className="card">
+          <div className="sm mut" style={{ marginBottom: 8 }}>RPE medio per seduta — se sale a parità di carico, stai accumulando fatica</div>
+          <Grafico values={sforzo} color="#F5B84A" h={92} />
+        </div>
       </>)}
 
       {prog.length > 1 && (<>
@@ -2975,6 +3009,16 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
           ))}
         </div>
       </>)}
+
+      {(s.exVideo ?? {})[ex] && <><h2>Dimostrazione</h2><Video className="fhero fvideo" src={s.exVideo[ex]} /></>}
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="cardh"><b>Descrizione</b></div>
+        <div className="cardh-div" />
+        <textarea className="notebox" key={ex} rows={3} defaultValue={(s.exDesc ?? {})[ex] ?? ''}
+          placeholder="Come si esegue, cue, errori da evitare… (facoltativo)"
+          onBlur={(e) => { const v = e.target.value.trim(); if (v !== ((s.exDesc ?? {})[ex] ?? '')) { const d = { ...(s.exDesc ?? {}) }; if (v) d[ex] = v; else delete d[ex]; setS({ ...s, exDesc: d }) } }} />
+      </div>
 
       <h2>Storico · {ds.length} sedute</h2>
       <div className="card" style={{ padding: '4px 12px' }}>
