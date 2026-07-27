@@ -577,8 +577,7 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
 
 // Tab Schede: gestione schede + calendario allenamenti (coerente con lo stile del Cibo)
 function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State) => void; onStart: () => void; workoutActive: boolean }) {
-  const [tab, setTab] = useState<'schede' | 'cal' | 'stats'>('schede')
-  const [statsEx, setStatsEx] = useState<string | null>(null)
+  const [tab, setTab] = useState<'schede' | 'cal' | 'esercizi' | 'stats'>('schede')
   const repeatDay = (date: string) => {
     const sets = s.log.filter((l) => l.date === date)
     const already = new Set([...curItems(s).map((i) => i.ex), ...s.extras.filter((e) => e.date === today()).map((e) => e.item.ex)])
@@ -602,14 +601,14 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
   return (
     <>
       <div className="seg" style={{ marginTop: 4, marginBottom: 20 }}>
-        {([['schede', 'Schede'], ['cal', 'Calendario'], ['stats', 'Stats']] as const).map(([k, l]) => (
+        {([['schede', 'Schede'], ['cal', 'Calendario'], ['esercizi', 'Esercizi'], ['stats', 'Stats']] as const).map(([k, l]) => (
           <button key={k} className={'sg' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
       {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
       {tab === 'cal' && <Calendario s={s} setS={setS} onRepeat={repeatDay} onDelete={deleteDay} />}
-      {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
-      {statsEx && <ExStats s={s} setS={setS} ex={statsEx} onClose={() => setStatsEx(null)} />}
+      {tab === 'esercizi' && <Esercizi s={s} setS={setS} />}
+      {tab === 'stats' && <Statistiche s={s} />}
     </>
   )
 }
@@ -2869,8 +2868,11 @@ function Sparkline({ values, color = '#C9F94E', h = 90 }: { values: number[]; co
 }
 
 // Scheda statistiche di un singolo esercizio (foglio a tutto schermo)
-function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void; ex: string; onClose: () => void }) {
+// Contenuto del dettaglio esercizio, senza wrapper: lo usano sia l'overlay in allenamento
+// (ExStats) sia la PAGINA del tab Esercizi. onDeleted = cosa fare dopo l'eliminazione.
+function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) => void; ex: string; onDeleted: () => void }) {
   const ds = historyDates(s.log, ex)
+  const sets = s.log.filter((l) => l.ex === ex && !l.timed && l.kg > 0) // per rep-max e recuperi
   const best = ds.length ? bestE1rm(s.log, ex) : 0
   const rec = record(s.log, ex)
   const volOf = (d: string) => s.log.filter((x) => x.ex === ex && x.date === d).reduce((a, x) => a + x.kg * x.reps, 0)
@@ -2878,11 +2880,27 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
   const bestVol = vols.length ? Math.max(...vols) : 0
   const last = ds.length ? ds[ds.length - 1] : null
   const daysAgo = last ? Math.floor((Date.now() - new Date(last + 'T12:00').getTime()) / 86400000) : null
-  const mus = muscleOf(s, ex)
   const totVol = vols.reduce((a, v) => a + v, 0)
   const dRpe = rpeDelta(s.log, ex)
-  // Elimina l'esercizio dal database: via lo storico (locale + cloud) e i suoi dati per-nome.
-  // NON tocca le schede: se è in una scheda ci resta come esercizio, ma senza storico.
+  const mx = massimale(s, ex)
+  // rep-max: peso più alto sollevato per ALMENO n ripetizioni
+  const repMax = (n: number) => { const c = sets.filter((l) => l.reps >= n); return c.length ? Math.max(...c.map((l) => l.kg)) : 0 }
+  const repMaxes = [1, 3, 5, 8, 10, 12].map((n) => ({ n, kg: repMax(n) })).filter((x) => x.kg > 0)
+  const recs = sets.map((l) => l.rec).filter((r): r is number => r != null)
+  const recMedio = recs.length ? Math.round(recs.reduce((a, b) => a + b, 0) / recs.length) : 0
+  const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  const sedute30 = ds.filter((d) => d >= d30).length
+  const recentDs = ds.slice(-6)
+  let cadenza = 0
+  if (recentDs.length > 1) {
+    let tot = 0
+    for (let i = 1; i < recentDs.length; i++) tot += (new Date(recentDs[i]).getTime() - new Date(recentDs[i - 1]).getTime()) / 86400000
+    cadenza = Math.round(tot / (recentDs.length - 1))
+  }
+  const nSerie = sets.length
+  const nReps = sets.reduce((a, l) => a + l.reps, 0)
+  const prog = progressione(s, ex)
+
   const elimina = async () => {
     const inScheda = allItems(s).some((it) => it.ex === ex)
     const nSet = s.log.filter((l) => l.ex === ex).length
@@ -2899,8 +2917,92 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
     d.exDesc = senza(d.exDesc) as State['exDesc']
     d.sessionEx = (d.sessionEx ?? []).filter((x) => x.ex !== ex)
     setS(d)
-    onClose()
+    onDeleted()
   }
+
+  return (
+    <div className="plist" style={{ borderTop: 0 }}>
+      <div className="tiles">
+        <div className="tile"><div className="l">1RM stimato</div><div className="v num">{best ? fmt(best) : '—'} <span className="sm mut">kg</span></div></div>
+        <div className="tile"><div className="l">Record serie</div><div className="v num">{rec ? `${fmt(rec.kg)}×${rec.reps}` : '—'}</div></div>
+        <div className="tile"><div className="l">Massimale {mx.fonte === 'ref' ? 'tuo' : 'stimato'}</div><div className="v num" style={{ color: mx.fonte === 'ref' ? 'var(--lime)' : undefined }}>{mx.kg ? fmt(round25(mx.kg)) : '—'} <span className="sm mut">kg</span></div></div>
+        <div className="tile"><div className="l">Ultima volta</div><div className="v num" style={daysAgo != null && daysAgo > 10 ? { color: 'var(--amber)' } : undefined}>
+          {daysAgo == null ? 'mai' : daysAgo === 0 ? 'oggi' : `${daysAgo} gg fa`}</div></div>
+        <div className="tile"><div className="l">Trend RPE</div><div className="v num" style={{ color: dRpe >= 1 ? 'var(--amber)' : 'var(--teal)' }}>
+          {ds.length < 2 ? '—' : (dRpe >= 0 ? '▲ +' : '▼ ') + fmt(Math.abs(dRpe))}</div></div>
+        <div className="tile"><div className="l">Recupero medio</div><div className="v num">{recMedio ? mmss(recMedio) : '—'}</div></div>
+        <div className="tile"><div className="l">Sedute · 30gg</div><div className="v num">{sedute30}</div></div>
+        <div className="tile"><div className="l">Cadenza</div><div className="v num">{cadenza ? `${cadenza} gg` : '—'}</div></div>
+        <div className="tile"><div className="l">Serie totali</div><div className="v num">{nSerie}</div></div>
+        <div className="tile"><div className="l">Reps totali</div><div className="v num">{nReps}</div></div>
+        <div className="tile"><div className="l">Miglior volume</div><div className="v num">{bestVol ? fmt(bestVol / 1000) : '—'} <span className="sm mut">t</span></div></div>
+        <div className="tile"><div className="l">Volume tot</div><div className="v num">{fmt(totVol / 1000)} <span className="sm mut">t</span></div></div>
+      </div>
+
+      {repMaxes.length > 0 && (<>
+        <h2>Massimali per ripetizioni</h2>
+        <div className="card"><div className="rmrow">
+          {repMaxes.map((r) => <div className="rmcell" key={r.n}><b className="num">{fmt(r.kg)}</b><span>{r.n} rip.</span></div>)}
+        </div></div>
+      </>)}
+
+      {(s.exVideo ?? {})[ex] && <Video className="fhero fvideo" src={s.exVideo[ex]} />}
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="cardh"><b>Descrizione</b></div>
+        <div className="cardh-div" />
+        <textarea className="notebox" key={ex} rows={3} defaultValue={(s.exDesc ?? {})[ex] ?? ''}
+          placeholder="Come si esegue, cue, errori da evitare… (facoltativo)"
+          onBlur={(e) => { const v = e.target.value.trim(); if (v !== ((s.exDesc ?? {})[ex] ?? '')) { const d = { ...(s.exDesc ?? {}) }; if (v) d[ex] = v; else delete d[ex]; setS({ ...s, exDesc: d }) } }} />
+      </div>
+
+      {ds.length > 1 && (<>
+        <h2>1RM stimato nel tempo</h2>
+        <div className="card"><Sparkline values={ds.map((d) => sessionE1rm(s.log, ex, d))} h={72} /></div>
+        <h2>Volume per seduta</h2>
+        <div className="card"><Sparkline values={vols} color="#31E0B4" h={60} /></div>
+      </>)}
+
+      {prog.length > 1 && (<>
+        <h2>Progressione · col contesto</h2>
+        <div className="card" style={{ padding: '4px 12px' }}>
+          {prog.slice().reverse().map((p) => (
+            <div className="set" key={p.date}>
+              <span className="mono sm mut num" style={{ width: 56, flex: 'none' }}>{p.date.slice(5).split('-').reverse().join('/')}</span>
+              <b className="num sm">{fmt(round25(p.e1rm))} kg</b>
+              <span className="meta num" style={{ marginLeft: 'auto' }}>{p.pos}° eserc. · {p.preSerie} serie prima</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+
+      <h2>Storico · {ds.length} sedute</h2>
+      <div className="card" style={{ padding: '4px 12px' }}>
+        {ds.slice().reverse().map((d) => {
+          const ss = s.log.filter((x) => x.ex === ex && x.date === d)
+          const ar = avgRpeOf(s.log, ex, d)
+          const rd = readinessOn(s, d)
+          return (
+            <div className="set" key={d} style={{ alignItems: 'flex-start' }}>
+              <span className="mono sm mut num" style={{ width: 56, flex: 'none', paddingTop: 2 }}>{d.slice(5).split('-').reverse().join('/')}</span>
+              <div className="num sm" style={{ minWidth: 0, lineHeight: 1.6 }}>{ss.map((x, i) => <span key={i}>{fmt(x.kg)}×{x.reps}{x.rpe != null ? '@' + fmt(x.rpe) : ''}{i < ss.length - 1 ? '  ·  ' : ''}</span>)}</div>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flex: 'none', paddingTop: 2 }}>
+                {rd != null && <span className="r num" style={{ color: rColor(rd), background: 'var(--surf2)' }} title="readiness del giorno">⚡{rd}</span>}
+                {ar > 0 && <span className={'r num ' + (ar >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(ar)}</span>}
+              </span>
+            </div>
+          )
+        })}
+        {!ds.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Mai allenato: parti oggi.</p>}
+      </div>
+      <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
+    </div>
+  )
+}
+
+// Overlay del dettaglio, usato durante l'allenamento (tap dallo storico pesi in focus).
+function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void; ex: string; onClose: () => void }) {
+  const mus = muscleOf(s, ex)
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -2912,91 +3014,44 @@ function ExStats({ s, setS, ex, onClose }: { s: State; setS: (u: State) => void;
           </div>
           <button className="pen" onClick={onClose}>✕</button>
         </div>
-        <div className="plist" style={{ borderTop: 0 }}>
-          <div className="tiles">
-            <div className="tile"><div className="l">1RM stimato</div><div className="v num">{best ? fmt(best) : '—'} <span className="sm mut">kg</span></div></div>
-            <div className="tile"><div className="l">Record</div><div className="v num">{rec ? `${fmt(rec.kg)}×${rec.reps}` : '—'}</div></div>
-            <div className="tile"><div className="l">Miglior volume</div><div className="v num">{bestVol ? fmt(bestVol / 1000) : '—'} <span className="sm mut">t</span></div></div>
-            <div className="tile"><div className="l">Ultima volta</div><div className="v num" style={daysAgo != null && daysAgo > 10 ? { color: 'var(--amber)' } : undefined}>
-              {daysAgo == null ? 'mai' : daysAgo === 0 ? 'oggi' : `${daysAgo} gg fa`}</div></div>
-            <div className="tile"><div className="l">Trend RPE</div><div className="v num" style={{ color: dRpe >= 1 ? 'var(--amber)' : 'var(--teal)' }}>
-              {ds.length < 2 ? '—' : (dRpe >= 0 ? '▲ +' : '▼ ') + fmt(Math.abs(dRpe))}</div></div>
-            <div className="tile"><div className="l">Tonnellaggio tot</div><div className="v num">{fmt(totVol / 1000)} <span className="sm mut">t</span></div></div>
-          </div>
-
-          {/* dimostrazione: la stessa di (esercizio) vista in allenamento, qui in sola lettura */}
-          {(s.exVideo ?? {})[ex] && <Video className="fhero fvideo" src={s.exVideo[ex]} />}
-
-          {/* descrizione dell'esercizio, per NOME: appunti di tecnica che valgono sempre */}
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="cardh"><b>Descrizione</b></div>
-            <div className="cardh-div" />
-            <textarea className="notebox" key={ex} rows={3} defaultValue={(s.exDesc ?? {})[ex] ?? ''}
-              placeholder="Come si esegue, cue, errori da evitare… (facoltativo)"
-              onBlur={(e) => { const v = e.target.value.trim(); if (v !== ((s.exDesc ?? {})[ex] ?? '')) { const d = { ...(s.exDesc ?? {}) }; if (v) d[ex] = v; else delete d[ex]; setS({ ...s, exDesc: d }) } }} />
-          </div>
-
-          {ds.length > 1 && (<>
-            <h2>1RM stimato</h2>
-            <div className="card"><Sparkline values={ds.map((d) => sessionE1rm(s.log, ex, d))} h={72} /></div>
-            <h2>Volume per seduta</h2>
-            <div className="card"><Sparkline values={vols} color="#31E0B4" h={60} /></div>
-          </>)}
-          <h2>Storico · {ds.length} sedute</h2>
-          <div className="card" style={{ padding: '4px 12px' }}>
-            {ds.slice().reverse().map((d) => {
-              const ss = s.log.filter((x) => x.ex === ex && x.date === d)
-              const ar = avgRpeOf(s.log, ex, d)
-              const rd = readinessOn(s, d)
-              return (
-                <div className="set" key={d}>
-                  <span className="mono sm mut num" style={{ width: 56, flex: 'none' }}>{d.slice(5).split('-').reverse().join('/')}</span>
-                  <b className="num sm">{fmt(ss[0].kg)} · {ss.map((x) => x.reps).join('/')}</b>
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                    {rd != null && <span className="r num" style={{ color: rColor(rd), background: 'var(--surf2)' }} title="readiness del giorno">⚡{rd}</span>}
-                    {ar > 0 && <span className={'r num ' + (ar >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(ar)}</span>}
-                  </span>
-                </div>
-              )
-            })}
-            {!ds.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Mai allenato: parti oggi.</p>}
-          </div>
-          <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
-        </div>
+        <ExDettaglio s={s} setS={setS} ex={ex} onDeleted={onClose} />
       </div>
     </div>
   )
 }
 
-function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) {
-  // Stessa libreria completa del selettore (default + personalizzati + usati/in scheda)
+// Tab Esercizi: libreria completa (lista) → PAGINA di dettaglio (non overlay).
+function Esercizi({ s, setS }: { s: State; setS: (u: State) => void }) {
+  const [sel, setSel] = useState<string | null>(null)
   const exList = useMemo(() => libreriaEsercizi(s).map((e) => e.name), [s])
   const [q, setQ] = useState('')
   const [mus, setMus] = useState<string | null>(null)
+  useTop(sel)
   const groups = useMemo(() => [...new Set(exList.map((e) => muscleOf(s, e)))], [exList, s])
   const filtered = exList.filter((e) => (!mus || muscleOf(s, e) === mus) && e.toLowerCase().includes(q.toLowerCase().trim()))
-  const mv = muscleVolume(s)
-  const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
+
+  if (sel) return (
+    <>
+      <div className="bc" style={{ marginTop: 18 }}>
+        <button className="back" onClick={() => setSel(null)}>‹</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="crumb" style={{ color: mcolor(muscleOf(s, sel)) }}>{muscleOf(s, sel)}</div>
+          <div className="bt1">{sel}</div>
+        </div>
+      </div>
+      <ExDettaglio s={s} setS={setS} ex={sel} onDeleted={() => setSel(null)} />
+    </>
+  )
+
   return (
     <>
-      <h2>Volume per gruppo · 7 giorni</h2>
-      <div className="card">
-        {mvEntries.length ? mvEntries.map(([m, n]) => (
-          <div className="bar" key={m}>
-            <span className="bn" style={{ color: mcolor(m) }}>{m}</span>
-            <div className="bt"><i style={{ width: Math.min(100, (n / 16) * 100) + '%', background: n < 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
-            <span className="bv num">{n} serie</span>
-          </div>
-        )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessuna serie negli ultimi 7 giorni.</p>}
-        <p className="hint">Target: 10-20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = poco allenato</p>
-      </div>
-      <h2>Esercizi · {exList.length}</h2>
-      <input placeholder="Cerca esercizio…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)' }} />
+      <input placeholder="Cerca esercizio…" value={q} onChange={(e) => setQ(e.target.value)} style={{ fontFamily: 'var(--sans)', marginTop: 4 }} />
       <div className="chips scrollx" style={{ marginTop: 8 }}>
         <button className={'chip' + (mus === null ? ' on' : '')} onClick={() => setMus(null)}>Tutti</button>
         {groups.map((g) => <button key={g} className={'chip' + (mus === g ? ' on' : '')} onClick={() => setMus(g)}>{g}</button>)}
       </div>
-      <div style={{ marginTop: 10 }}>
+      <h2>{filtered.length} esercizi</h2>
+      <div>
         {filtered.map((ex) => {
           const ds = historyDates(s.log, ex)
           const best = ds.length ? bestE1rm(s.log, ex) : 0
@@ -3005,7 +3060,7 @@ function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) 
           const mm = muscleOf(s, ex)
           const custom = s.customExercises.some((e) => e.name === ex)
           return (
-            <div className="navcard" key={ex} onClick={() => onOpen(ex)}>
+            <div className="navcard" key={ex} onClick={() => setSel(ex)}>
               <span className="exbar" style={{ background: mcolor(mm) }} />
               <div style={{ minWidth: 0 }}>
                 <b>{ex}{custom && <span className="stag" style={{ marginLeft: 8 }}>tuo</span>}</b>
@@ -3020,6 +3075,26 @@ function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) 
           )
         })}
         {!filtered.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Nessun esercizio trovato.</p>}
+      </div>
+    </>
+  )
+}
+
+function Statistiche({ s }: { s: State }) {
+  const mv = muscleVolume(s)
+  const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
+  return (
+    <>
+      <h2>Volume per gruppo · 7 giorni</h2>
+      <div className="card">
+        {mvEntries.length ? mvEntries.map(([m, n]) => (
+          <div className="bar" key={m}>
+            <span className="bn" style={{ color: mcolor(m) }}>{m}</span>
+            <div className="bt"><i style={{ width: Math.min(100, (n / 16) * 100) + '%', background: n < 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
+            <span className="bv num">{n} serie</span>
+          </div>
+        )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessuna serie negli ultimi 7 giorni.</p>}
+        <p className="hint">Target: 10-20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = poco allenato</p>
       </div>
     </>
   )

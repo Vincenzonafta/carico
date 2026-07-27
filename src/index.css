@@ -224,6 +224,13 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .calrow .x { text-align:center; color:var(--mut2); }
 .calrow .del { text-align:center; }
 
+/* massimali per ripetizioni: fila di celle peso · n rip. */
+.rmrow { display:flex; gap:8px; overflow-x:auto; padding:2px 0; }
+.rmcell { flex:none; min-width:62px; display:flex; flex-direction:column; align-items:center; gap:2px;
+  padding:9px 10px; background:var(--surf2); border:1px solid var(--hair); border-radius:11px; }
+.rmcell b { font-size:17px; font-weight:800; }
+.rmcell span { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--mut2); }
+
 .hint { font-family:var(--mono); font-size:12.5px; color:var(--mut); margin:10px 2px 2px; }
 .hint b { color:var(--lime); font-weight:700; }
 
