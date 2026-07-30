@@ -1899,14 +1899,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>
 
-            {/* Due livelli distinti: la nota della SCHEDA vale sempre e si modifica nell'editor
-                (qui è solo un promemoria); quella di OGGI è il tuo feedback su questa seduta. */}
+            {/* SOLO la nota di OGGI: il tuo feedback su questa seduta. La descrizione della
+                scheda è un'altra cosa e sta in fondo, per non confonderle mentre ti alleni. */}
             <div className="card" style={{ marginTop: 12 }}>
-              <div className="cardh"><b>Note</b></div>
+              <div className="cardh"><b>Come è andata oggi</b></div>
               <div className="cardh-div" />
-              {it.note && <div className="schednote"><span className="l">Dalla scheda</span>{it.note}</div>}
               <textarea key={it.ex} className="notebox" rows={2} defaultValue={sessNote?.note ?? ''}
-                placeholder="Come è andata oggi? es. fastidio spalla, presa più larga…"
+                placeholder="es. fastidio spalla, presa più larga, ultima serie tirata…"
                 onBlur={(e) => {
                   const v = e.target.value.trim()
                   if (v !== (sessNote?.note ?? '')) setS({ ...s, sessionEx: setSessionEx(s, it.ex, today(), { note: v || undefined }) })
@@ -2006,6 +2005,17 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>
             </div>
+
+            {/* Descrizione dalla SCHEDA (e dall'archivio esercizi): sola lettura, in fondo —
+                è materiale di riferimento, non il diario di oggi. Si modifica nell'editor. */}
+            {(it.note || (s.exDesc ?? {})[it.ex]) && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="cardh"><b>Descrizione</b></div>
+                <div className="cardh-div" />
+                {it.note && <div className="schednote"><span className="l">Dalla scheda</span>{it.note}</div>}
+                {(s.exDesc ?? {})[it.ex] && <div className="schednote" style={{ marginBottom: 0 }}><span className="l">Sull'esercizio</span>{s.exDesc[it.ex]}</div>}
+              </div>
+            )}
 
             <div style={{ height: 78 }} />{/* aria per la barra sticky */}
             <div className={'focusbar' + (timerActive ? ' up' : '')}>
