@@ -2045,7 +2045,10 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 {done < sps.length && <button className="addset num" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13, letterSpacing: '.06em' }} onClick={() => setRpeCalc({ it, sp: sps[done], i: done })} title="Calcolatore RPE">RPE</button>}
                 {done < sps.length && <button className="addset" disabled={iaBusy} style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13 }}
                   onClick={() => chiediPeso(it, sps[done], done)} title="Chiedi al coach che peso usare">{iaBusy ? 'penso…' : '✨ Peso'}</button>}
-                <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => addSetRt(it, isExtra)}>＋ Serie</button>
+                {/* a esercizio finito questo è IL tasto che serve (continuare con un'altra serie):
+                    diventa pieno e a riga intera, invece di restare un tratteggio tra gli altri */}
+                <button className={'addset' + (exDone ? ' vai' : '')} style={{ marginTop: 0, flex: exDone ? '1 0 100%' : 'none', width: 'auto', padding: exDone ? '12px' : '0 14px' }}
+                  onClick={() => addSetRt(it, isExtra)}>＋ {exDone ? 'Aggiungi un\'altra serie' : 'Serie'}</button>
                 <button className="addset rm" style={{ marginTop: 0, padding: '9px 13px' }} onClick={() => removeSetRt(it, isExtra)}>−</button>
               </div>
             </div>
@@ -2968,6 +2971,9 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
   const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
   const sedute30 = ds.filter((d) => d >= d30).length
   const prog = progressione(s, ex)
+  // video delle sedute passate: erano salvati nello Storage ma visibili solo il giorno stesso
+  const [vidDate, setVidDate] = useState<string | null>(null)
+  const nVid = (d: string) => Object.keys(sessionExOf(s, ex, d)?.setVideos ?? {}).length
 
   // FORZA per seduta = 1RM stimato AGGIUSTATO PER RPE (più onesto di Epley quando l'RPE c'è):
   // 100x5@7 e 100x5@9 sono lo stesso peso ma forza diversa, e questo lo cattura.
@@ -3082,19 +3088,43 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
           const ar = avgRpeOf(s.log, ex, d)
           const rd = readinessOn(s, d)
           return (
-            <div className="set" key={d} style={{ alignItems: 'flex-start' }}>
+            <div className="set" key={d} style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <span className="mono sm mut num" style={{ width: 56, flex: 'none', paddingTop: 2 }}>{d.slice(5).split('-').reverse().join('/')}</span>
               <div className="num sm" style={{ minWidth: 0, lineHeight: 1.6 }}>{ss.map((x, i) => <span key={i}>{fmt(x.kg)}×{x.reps}{x.rpe != null ? '@' + fmt(x.rpe) : ''}{i < ss.length - 1 ? '  ·  ' : ''}</span>)}</div>
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flex: 'none', paddingTop: 2 }}>
+                {/* video di QUELLA seduta: erano salvati ma raggiungibili solo il giorno stesso */}
+                {nVid(d) > 0 && <span className="svid on" title={`Guarda i video di questa seduta (${nVid(d)})`} onClick={() => setVidDate(d)}>▶{nVid(d) > 1 ? ' ' + nVid(d) : ''}</span>}
                 {rd != null && <span className="r num" style={{ color: rColor(rd), background: 'var(--surf2)' }} title="readiness del giorno">⚡{rd}</span>}
                 {ar > 0 && <span className={'r num ' + (ar >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(ar)}</span>}
               </span>
+              {/* la nota che hai scritto quel giorno: è il "com'è andata", va letta accanto ai numeri */}
+              {sessionExOf(s, ex, d)?.note && <div className="schednote" style={{ flex: '1 0 100%', margin: '6px 0 2px' }}>{sessionExOf(s, ex, d)!.note}</div>}
             </div>
           )
         })}
         {!ds.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Mai allenato: parti oggi.</p>}
       </div>
       <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
+
+      {/* Player dei video di UNA seduta: una voce per serie ripresa. */}
+      {vidDate && (() => {
+        const vs = Object.entries(sessionExOf(s, ex, vidDate)?.setVideos ?? {}).sort((a, b) => +a[0] - +b[0])
+        return (
+          <div className="overlay center" onClick={() => setVidDate(null)}>
+            <div className="dlg" onClick={(e) => e.stopPropagation()}>
+              <b className="dt">{ex} · {vidDate.split('-').reverse().join('/')}</b>
+              {vs.map(([i, url]) => (
+                <div key={i} style={{ marginTop: 10 }}>
+                  <div className="crumb" style={{ marginBottom: 5 }}>Serie {+i + 1}</div>
+                  <Video className="vidfull" src={url} />
+                </div>
+              ))}
+              {!vs.length && <p className="sm mut">Nessun video per questa seduta.</p>}
+              <button className="ghost" style={{ marginTop: 12 }} onClick={() => setVidDate(null)}>Chiudi</button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
