@@ -1899,18 +1899,17 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 : <p className="sm mut" style={{ margin: 0 }}>Nessun carico inserito: parti prudente e segna tutto.</p>}
             </div>
 
-            {/* SOLO la nota di OGGI: il tuo feedback su questa seduta. La descrizione della
-                scheda è un'altra cosa e sta in fondo, per non confonderle mentre ti alleni. */}
-            <div className="card" style={{ marginTop: 12 }}>
-              <div className="cardh"><b>Come è andata oggi</b></div>
-              <div className="cardh-div" />
-              <textarea key={it.ex} className="notebox" rows={2} defaultValue={sessNote?.note ?? ''}
-                placeholder="es. fastidio spalla, presa più larga, ultima serie tirata…"
-                onBlur={(e) => {
-                  const v = e.target.value.trim()
-                  if (v !== (sessNote?.note ?? '')) setS({ ...s, sessionEx: setSessionEx(s, it.ex, today(), { note: v || undefined }) })
-                }} />
-            </div>
+            {/* SOPRA le serie la DESCRIZIONE: è ciò che leggi prima di caricare (nota della
+                scheda + descrizione dell'esercizio). Sola lettura, si modifica nell'editor.
+                Il diario di oggi sta in fondo, dopo le serie: lo scrivi quando hai finito. */}
+            {(it.note || (s.exDesc ?? {})[it.ex]) && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="cardh"><b>Descrizione</b></div>
+                <div className="cardh-div" />
+                {it.note && <div className="schednote"><span className="l">Dalla scheda</span>{it.note}</div>}
+                {(s.exDesc ?? {})[it.ex] && <div className="schednote" style={{ marginBottom: 0 }}><span className="l">Sull'esercizio</span>{s.exDesc[it.ex]}</div>}
+              </div>
+            )}
 
             <div className={'card excard' + (exDone ? ' completed' : '')} style={{ marginTop: 12 }}>
               <div className="cardh"><b>Serie</b></div>
@@ -2006,16 +2005,17 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
               </div>
             </div>
 
-            {/* Descrizione dalla SCHEDA (e dall'archivio esercizi): sola lettura, in fondo —
-                è materiale di riferimento, non il diario di oggi. Si modifica nell'editor. */}
-            {(it.note || (s.exDesc ?? {})[it.ex]) && (
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="cardh"><b>Descrizione</b></div>
-                <div className="cardh-div" />
-                {it.note && <div className="schednote"><span className="l">Dalla scheda</span>{it.note}</div>}
-                {(s.exDesc ?? {})[it.ex] && <div className="schednote" style={{ marginBottom: 0 }}><span className="l">Sull'esercizio</span>{s.exDesc[it.ex]}</div>}
-              </div>
-            )}
+            {/* Diario di OGGI in fondo: si scrive a serie finite, non prima. */}
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="cardh"><b>Come è andata oggi</b></div>
+              <div className="cardh-div" />
+              <textarea key={it.ex} className="notebox" rows={2} defaultValue={sessNote?.note ?? ''}
+                placeholder="es. fastidio spalla, presa più larga, ultima serie tirata…"
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (v !== (sessNote?.note ?? '')) setS({ ...s, sessionEx: setSessionEx(s, it.ex, today(), { note: v || undefined }) })
+                }} />
+            </div>
 
             <div style={{ height: 78 }} />{/* aria per la barra sticky */}
             <div className={'focusbar' + (timerActive ? ' up' : '')}>
