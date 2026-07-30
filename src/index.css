@@ -440,6 +440,12 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* riordino a trascinamento */
 .reobox { position:relative; touch-action:pan-y; margin:6px 0; }
+/* blocco riordinabile: una riga sola, oppure una coppia/catena di superset che si muove INSIEME */
+.reoblock { position:absolute; left:0; right:0; transition:transform .16s ease; touch-action:pan-y;
+  -webkit-touch-callout:none; cursor:pointer; }
+.reoblock.dragging { transition:none; z-index:6; }
+/* dentro un blocco le card si posizionano con top, non col transform del blocco */
+.ocard.inblock { transform:none; transition:none; }
 
 /* overview allenamento: card leggere, tap = focus, tieni premuto = riordina */
 .ocard { position:absolute; left:0; right:0; display:flex; align-items:center; gap:12px; padding:0 16px;

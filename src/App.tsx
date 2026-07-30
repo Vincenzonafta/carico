@@ -139,6 +139,16 @@ const rColor = (r: number) => (r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)
 // Ogni cambio di schermata (tab o vista interna) riparte dall'inizio, senza flash
 const useTop = (dep: unknown) => { useLayoutEffect(() => { window.scrollTo(0, 0) }, [dep]) }
 
+// id di blocco per il riordino: gli esercizi legati da `ss` (superset, anche a catena) stanno
+// nello stesso blocco e si spostano insieme. Le righe libere tornano undefined = blocco a sé.
+const ssBlockOf = (arr: PlanItem[]) => (it: PlanItem, i: number): string | undefined => {
+  const legato = (it.ss && i + 1 < arr.length) || (i > 0 && (arr[i - 1]?.ss ?? false))
+  if (!legato) return undefined
+  let start = i
+  while (start > 0 && arr[start - 1]?.ss) start-- // risalgo all'inizio della catena
+  return 'ss' + start
+}
+
 export default function App() {
   const [s, setS] = useState<State>(load)
   const [tab, setTab] = useState<Tab>('oggi')
@@ -939,7 +949,8 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
               <span className="chev">›</span>
             </>)}
             onTap={(i) => setEdit(i)}
-            onReorder={(order) => mutate((d) => { const dd = d.schede[s.activeScheda].days[s.activeDay]; dd.items = order.map((i2) => dd.items[i2]) })} />
+            onReorder={(order) => mutate((d) => { const dd = d.schede[s.activeScheda].days[s.activeDay]; dd.items = order.map((i2) => dd.items[i2]) })}
+            blockOf={ssBlockOf(items)} />
         </>
       )}
       <button className="ghost" style={{ marginTop: 12 }} onClick={() => setPicker(true)}>＋ Aggiungi esercizio</button>
@@ -1181,17 +1192,35 @@ function RestPicker({ value, onChange, onClose, title, done, extra, onDone }: {
 
 // Lista riordinabile: TAP = apri, TIENI PREMUTO = trascina (auto-scroll ai bordi, rilascio = conferma).
 // Unica implementazione del drag, usata dall'overview allenamento e dall'editor del giorno.
-function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }: {
+// Riordino per BLOCCHI: normalmente ogni riga è un blocco a sé, ma `blockOf` può legare righe
+// adiacenti (i superset) così si spostano INSIEME e niente può finire in mezzo alla coppia.
+// Il drag lavora sull'ordine dei blocchi; onReorder riceve comunque indici di ITEM appiattiti.
+function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder, blockOf }: {
   items: T[]; rowH: number
   keyOf: (item: T) => string
   rowClass?: (item: T) => string
   render: (item: T) => React.ReactNode
   onTap: (index: number) => void
   onReorder: (order: number[]) => void
+  blockOf?: (item: T, index: number) => string | undefined
 }) {
   const [order2, setOrder2] = useState<number[] | null>(null)
   const [dragPos, setDragPos] = useState<{ pos: number; rel: number } | null>(null)
   const obox = useRef<HTMLDivElement>(null)
+  // blocchi = gruppi di indici item adiacenti con lo stesso id (undefined = riga singola)
+  const blocks = useMemo(() => {
+    const out: number[][] = []
+    let lastId: string | undefined
+    items.forEach((it, i) => {
+      const id = blockOf?.(it, i)
+      if (id !== undefined && id === lastId) out[out.length - 1].push(i)
+      else out.push([i])
+      lastId = id
+    })
+    return out
+  }, [items, blockOf])
+  const blocksRef = useRef(blocks); blocksRef.current = blocks
+  const rowsBefore = (order: number[], pos: number) => order.slice(0, pos).reduce((a, bi) => a + blocksRef.current[bi].length, 0)
   const dr = useRef({ y: 0, startY: 0, pos: 0, order: [] as number[], raf: 0, active: false, moved: false, timer: null as ReturnType<typeof setTimeout> | null })
   useEffect(() => { // iOS: blocca lo scroll pagina SOLO a drag attivo (listener non-passive)
     const stop = (e: TouchEvent) => { if (dr.current.active) e.preventDefault() }
@@ -1201,7 +1230,14 @@ function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }:
   const upd = () => {
     if (!obox.current) return
     const rel = dr.current.y - obox.current.getBoundingClientRect().top // rect fresco: vale anche dopo lo scroll
-    const target = Math.max(0, Math.min(dr.current.order.length - 1, Math.floor(rel / rowH)))
+    // riga sotto il dito → posizione del BLOCCO che la contiene (i blocchi hanno altezze diverse)
+    const row = Math.floor(rel / rowH)
+    let acc = 0, target = dr.current.order.length - 1
+    for (let p = 0; p < dr.current.order.length; p++) {
+      acc += blocksRef.current[dr.current.order[p]].length
+      if (row < acc) { target = p; break }
+    }
+    target = Math.max(0, target)
     if (target !== dr.current.pos) {
       const n = [...dr.current.order]; const [m] = n.splice(dr.current.pos, 1); n.splice(target, 0, m)
       dr.current.order = n; dr.current.pos = target
@@ -1217,7 +1253,7 @@ function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }:
   const stopTimer = () => { if (dr.current.timer) { clearTimeout(dr.current.timer); dr.current.timer = null } }
   const down = (e: React.PointerEvent, pos: number) => {
     const el = e.currentTarget as HTMLElement, pid = e.pointerId
-    dr.current = { ...dr.current, y: e.clientY, startY: e.clientY, pos, order: items.map((_, i) => i), active: false, moved: false }
+    dr.current = { ...dr.current, y: e.clientY, startY: e.clientY, pos, order: blocks.map((_, i) => i), active: false, moved: false }
     stopTimer()
     dr.current.timer = setTimeout(() => { // tenuto fermo: parte il drag
       dr.current.active = true; dr.current.moved = true // moved: il click dopo non deve aprire
@@ -1241,7 +1277,8 @@ function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }:
     if (!dr.current.active) return
     dr.current.active = false
     cancelAnimationFrame(dr.current.raf)
-    onReorder(dr.current.order) // rilascio = conferma
+    // appiattisco i blocchi: il chiamante ragiona in indici di item, non sa dei blocchi
+    onReorder(dr.current.order.flatMap((bi) => blocksRef.current[bi])) // rilascio = conferma
     setOrder2(null); setDragPos(null)
   }
   const cancel = () => { // gesto reclamato dal browser: annulla senza applicare
@@ -1255,17 +1292,25 @@ function DragList<T>({ items, rowH, keyOf, rowClass, render, onTap, onReorder }:
     if (dr.current.moved) { dr.current.moved = false; return } // era un drag, non un tap
     onTap(idx)
   }
+  const ord = order2 ?? blocks.map((_, i) => i) // ordine dei BLOCCHI a schermo
   return (
     <div className="reobox" ref={obox} style={{ height: items.length * rowH }}>
-      {(order2 ?? items.map((_, i) => i)).map((oi, pos) => {
+      {ord.map((bi, pos) => {
+        const righe = blocks[bi]
         const dragging = order2 != null && dragPos?.pos === pos
-        const y = dragging ? dragPos!.rel - rowH / 2 : pos * rowH + 4
+        const hB = righe.length * rowH
+        const y = dragging ? dragPos!.rel - hB / 2 : rowsBefore(ord, pos) * rowH
         return (
-          <div key={keyOf(items[oi])} className={'ocard' + (dragging ? ' dragging' : '') + (rowClass ? ' ' + rowClass(items[oi]) : '')}
-            style={{ transform: `translateY(${y}px)`, height: rowH - 8 }}
-            onPointerDown={(e) => down(e, pos)} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
-            onClick={() => tap(oi)}>
-            {render(items[oi])}
+          <div key={keyOf(items[righe[0]])} className={'reoblock' + (dragging ? ' dragging' : '')}
+            style={{ transform: `translateY(${y}px)`, height: hB }}
+            onPointerDown={(e) => down(e, pos)} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
+            {righe.map((oi, k) => (
+              <div key={keyOf(items[oi])} className={'ocard inblock' + (dragging ? ' dragging' : '') + (rowClass ? ' ' + rowClass(items[oi]) : '')}
+                style={{ top: k * rowH + 4, height: rowH - 8 }}
+                onClick={() => tap(oi)}>
+                {render(items[oi])}
+              </div>
+            ))}
           </div>
         )
       })}
@@ -2073,7 +2118,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 <span className="chev">›</span>
               </>)
             }}
-            onTap={(i) => setFocus(i)} onReorder={applyOrder} />
+            onTap={(i) => setFocus(i)} onReorder={applyOrder} blockOf={ssBlockOf(plan)} />
           {extras.map((it, j) => {
             const idx = plan.length + j
             const sps = specs(it)
