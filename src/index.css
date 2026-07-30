@@ -156,7 +156,10 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* ============ allenamento in corso ============ */
 .excard { padding:15px 16px; margin-top:12px; }
-.excard.completed { opacity:.5; border-color:rgba(201,249,78,.4); }
+/* esercizio finito: NIENTE opacity sulla card — spegneva anche i tasti che restano
+   cliccabili (riposo, aggiungi serie) e non sembravano più premibili. Che sia completo
+   si vede già dal bordo lime, dal badge ✓ e dalle spunte su ogni riga. */
+.excard.completed { border-color:rgba(201,249,78,.4); }
 .exhead { display:flex; align-items:center; gap:11px; margin-bottom:8px; }
 .exprog { font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--mut);
   background:var(--surf2); border-radius:999px; padding:6px 12px; flex:none; margin-left:auto; }
@@ -513,7 +516,9 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
   border-radius:9px; border:1px solid var(--hair); color:var(--mut2); font-size:11px; cursor:pointer; }
 .svid.on { color:var(--lime); border-color:color-mix(in srgb, var(--lime) 45%, transparent);
   background:color-mix(in srgb, var(--lime) 12%, transparent); }
-.vidfull { width:100%; max-height:60vh; margin-top:12px; border-radius:12px; background:#000; display:block; }
+/* 45vh e non 60: con 60 il player + i tasti sotto sforavano lo schermo e "Chiudi"
+   diventava irraggiungibile. Così ci sta anche più di una clip nello stesso foglio. */
+.vidfull { width:100%; max-height:45vh; margin-top:8px; border-radius:12px; background:#000; display:block; }
 .fvdel { right:54px; color:var(--coral); }
 /* attesa del link firmato ed errore: stessa scatola del video, così il layout non salta */
 .vidmsg { display:flex; align-items:center; justify-content:center; min-height:128px;

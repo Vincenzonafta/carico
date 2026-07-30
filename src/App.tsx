@@ -3106,21 +3106,29 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
       </div>
       <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
 
-      {/* Player dei video di UNA seduta: una voce per serie ripresa. */}
+      {/* Player dei video di UNA seduta: una voce per serie ripresa. Foglio con la ✕ FISSA in
+          testa e i video che scorrono sotto: con più clip il tasto chiudi resta sempre a portata. */}
       {vidDate && (() => {
         const vs = Object.entries(sessionExOf(s, ex, vidDate)?.setVideos ?? {}).sort((a, b) => +a[0] - +b[0])
         return (
-          <div className="overlay center" onClick={() => setVidDate(null)}>
-            <div className="dlg" onClick={(e) => e.stopPropagation()}>
-              <b className="dt">{ex} · {vidDate.split('-').reverse().join('/')}</b>
-              {vs.map(([i, url]) => (
-                <div key={i} style={{ marginTop: 10 }}>
-                  <div className="crumb" style={{ marginBottom: 5 }}>Serie {+i + 1}</div>
-                  <Video className="vidfull" src={url} />
+          <div className="overlay" onClick={() => setVidDate(null)}>
+            <div className="sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="bc" style={{ margin: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="crumb">Video · {vidDate.split('-').reverse().join('/')}</div>
+                  <div className="bt1">{ex}</div>
                 </div>
-              ))}
-              {!vs.length && <p className="sm mut">Nessun video per questa seduta.</p>}
-              <button className="ghost" style={{ marginTop: 12 }} onClick={() => setVidDate(null)}>Chiudi</button>
+                <button className="pen" onClick={() => setVidDate(null)}>✕</button>
+              </div>
+              <div className="plist" style={{ borderTop: 0 }}>
+                {vs.map(([i, url]) => (
+                  <div key={i} style={{ marginBottom: 14 }}>
+                    <div className="crumb" style={{ marginBottom: 5 }}>Serie {+i + 1}</div>
+                    <Video className="vidfull" src={url} />
+                  </div>
+                ))}
+                {!vs.length && <p className="sm mut">Nessun video per questa seduta.</p>}
+              </div>
             </div>
           </div>
         )
