@@ -3009,7 +3009,8 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
   }
 
   return (
-    <div className="plist" style={{ borderTop: 0 }}>
+    <>
+      <div className="plist" style={{ borderTop: 0 }}>
       {/* ULTIMA VOLTA in cima: è il numero che usi per decidere il carico oggi. */}
       {lastSets.length > 0 && (
         <div className="card lastcard">
@@ -3105,9 +3106,11 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
         {!ds.length && <p className="sm mut" style={{ margin: '10px 2px' }}>Mai allenato: parti oggi.</p>}
       </div>
       <button className="ghost" style={{ marginTop: 14, color: 'var(--coral)' }} onClick={elimina}>Elimina esercizio</button>
+      </div>
 
       {/* Player dei video di UNA seduta: una voce per serie ripresa. Foglio con la ✕ FISSA in
-          testa e i video che scorrono sotto: con più clip il tasto chiudi resta sempre a portata. */}
+          testa e i video che scorrono sotto: con più clip il tasto chiudi resta sempre a portata.
+          Sta FUORI dal contenitore che scorre: annidato dentro, i due fogli si incastravano. */}
       {vidDate && (() => {
         const vs = Object.entries(sessionExOf(s, ex, vidDate)?.setVideos ?? {}).sort((a, b) => +a[0] - +b[0])
         return (
@@ -3128,12 +3131,13 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
                   </div>
                 ))}
                 {!vs.length && <p className="sm mut">Nessun video per questa seduta.</p>}
+                <div style={{ height: 24 }} />{/* respiro: senza, l'ultima clip resta tagliata a metà */}
               </div>
             </div>
           </div>
         )
       })()}
-    </div>
+    </>
   )
 }
 

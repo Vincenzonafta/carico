@@ -156,10 +156,13 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* ============ allenamento in corso ============ */
 .excard { padding:15px 16px; margin-top:12px; }
-/* esercizio finito: NIENTE opacity sulla card — spegneva anche i tasti che restano
-   cliccabili (riposo, aggiungi serie) e non sembravano più premibili. Che sia completo
-   si vede già dal bordo lime, dal badge ✓ e dalle spunte su ogni riga. */
+/* Esercizio finito: la card resta appannata (si vede che è chiuso), ma l'opacità va sui
+   CONTENUTI e non sul contenitore — messa sulla card spegneva anche i tasti ancora
+   cliccabili, e l'opacity di un genitore non si può annullare su un figlio. */
 .excard.completed { border-color:rgba(201,249,78,.4); }
+.excard.completed > .cardh,
+.excard.completed > .serhead,
+.excard.completed > .wrow { opacity:.5; }
 .exhead { display:flex; align-items:center; gap:11px; margin-bottom:8px; }
 .exprog { font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--mut);
   background:var(--surf2); border-radius:999px; padding:6px 12px; flex:none; margin-left:auto; }
