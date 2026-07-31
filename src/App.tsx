@@ -683,7 +683,16 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
     d.refMax = { ...(d.refMax ?? {}) }
     if (v) d.refMax[ex] = v; else delete d.refMax[ex]
   })
-  const removeItem = (i: number) => { mutate((d) => { dayItems(d).splice(i, 1) }); setEdit(null) }
+  const removeItem = (i: number) => {
+    mutate((d) => {
+      const a = dayItems(d)
+      // il precedente era in superset con questo: sciolgo la coppia, altrimenti il flag
+      // resterebbe appeso e legherebbe due esercizi che non c'entrano niente
+      if (i > 0 && a[i - 1]?.ss) delete a[i - 1].ss
+      a.splice(i, 1)
+    })
+    setEdit(null)
+  }
   // l'ordine si cambia SOLO col drag nella lista del giorno: niente frecce nella schermata esercizio
   const customize = (i: number) => mutate((d) => {
     const it = dayItems(d)[i]
@@ -1092,6 +1101,14 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                   <div className="efield full"><label>Tempo / fermi</label><input type="text" value={it.tempo ?? ''} placeholder="es. discesa 3s · fermo 2s al petto" onChange={(e) => updItem(i, { tempo: e.target.value || undefined })} style={{ fontFamily: 'var(--sans)' }} /></div>
                   <div className="efield full"><label>RPE / RIR previsto</label><input type="text" value={it.target ?? ''} placeholder="es. @8 oppure RIR2 — vale per tutte le serie" onChange={(e) => updItem(i, { target: e.target.value || undefined })} /></div>
                 </div>
+                {/* superset: si dichiara QUI, prima si poteva solo dal menu in allenamento.
+                    Solo se esiste un esercizio dopo: il flag lega SEMPRE al successivo. */}
+                {i < items.length - 1 && (
+                  <label className="tswitch full" style={{ marginTop: 12 }}>
+                    <input type="checkbox" checked={!!it.ss} onChange={(e) => updItem(i, { ss: e.target.checked || undefined })} />
+                    <span>In <b>superset</b> con <b>{items[i + 1].ex}</b> — si alterna una serie per esercizio</span>
+                  </label>
+                )}
               </div>
 
               {/* si torna all'elenco: restando qui la schermata punterebbe a un esercizio che non c'è più */}
@@ -1927,7 +1944,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 come "· superset" nel crumb e lo scoprivi quando il lock ti fermava. */}
             {ss && (ssNext || ssPrev) && (
               <div className="ssbar">
-                <span className="ico">⛓</span>
                 <div>
                   <b>Superset con {(ssNext ?? ssPrev)!.ex}</b>
                   <span>Alterna una serie per esercizio</span>

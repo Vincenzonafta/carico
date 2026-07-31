@@ -433,9 +433,8 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .ssbar { display:flex; align-items:center; gap:11px; margin-top:12px; padding:11px 13px;
   border-radius:13px; background:color-mix(in srgb, var(--lime) 11%, var(--surf));
   border:1px solid color-mix(in srgb, var(--lime) 45%, transparent); }
-.ssbar .ico { font-size:17px; flex:none; }
 .ssbar b { display:block; font-size:14.5px; font-weight:700; }
-.ssbar span:not(.ico) { display:block; margin-top:1px; font-family:var(--mono); font-size:11px;
+.ssbar span { display:block; margin-top:1px; font-family:var(--mono); font-size:11px;
   letter-spacing:.04em; color:var(--mut); }
 
 /* rotella recupero */
