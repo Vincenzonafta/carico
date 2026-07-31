@@ -645,10 +645,16 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   useTop(view)
 
   // Guard: con un allenamento in corso la scheda sotto i piedi non si tocca (né si cambia giorno/scheda attiva)
-  const guardWorkout = () => toast('Allenamento in corso: finiscilo o annullalo prima di modificare le schede')
+  const guardWorkout = () => toast('Allenamento in corso: finisci o annulla prima di cambiare scheda o giorno')
   const mutate = (fn: (d: State) => void) => {
-    if (workoutActive) return guardWorkout()
-    const d = structuredClone(s); fn(d); setS(d)
+    const d = structuredClone(s)
+    // Con un allenamento in corso la scheda si modifica LIBERAMENTE (la seduta è una copia,
+    // non un link). Ma la copia nasce pigra alla prima modifica in allenamento: se non c'è
+    // ancora, la fisso QUI col piano pre-modifica, altrimenti l'edit entrerebbe nella seduta.
+    if (workoutActive && !(d.allenamento && d.allenamento.date === today() && d.allenamento.scheda === s.activeScheda && d.allenamento.day === s.activeDay)) {
+      d.allenamento = { date: today(), scheda: s.activeScheda, day: s.activeDay, items: structuredClone(curItems(s)) }
+    }
+    fn(d); setS(d)
   }
   const dayItems = (d: State) => d.schede[s.activeScheda].days[s.activeDay].items
   const addItemByName = (name: string) => {
@@ -940,7 +946,9 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
       {items.length > 0 && (
         <>
           <p className="hint">Tocca per modificare · tieni premuto e trascina per riordinare</p>
+          {/* rowClass 'pair' = contorno verde su tutta la coppia, come in allenamento */}
           <DragList items={items} rowH={78} keyOf={(it) => it.ex}
+            rowClass={(it) => { const pi = items.indexOf(it); return it.ss || (pi > 0 && items[pi - 1]?.ss) ? 'pair' : '' }}
             render={(it) => (<>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <b style={{ fontSize: 16.5 }}>{it.ex}</b>{it.ss && <span className="stag">SS</span>}
@@ -1913,7 +1921,19 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 </div>
               )}
             <div className="ftitle">{it.ex}</div>
-            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{ss ? ' · superset' : ''}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}{it.target ? ' · ' + it.target : ''}</div>
+            <div className="crumb" style={{ margin: '4px 2px 0' }}><i className="mdotx" style={{ background: mcolor(it.muscle) }} />{it.muscle}{isExtra ? ' · extra' : ''}{tag ? ' · ' + tag : ''}{it.tempo ? ' · ' + it.tempo : ''}{it.target ? ' · ' + it.target : ''}</div>
+
+            {/* Superset dichiarato SUBITO, prima ancora di caricare: prima si leggeva solo
+                come "· superset" nel crumb e lo scoprivi quando il lock ti fermava. */}
+            {ss && (ssNext || ssPrev) && (
+              <div className="ssbar">
+                <span className="ico">⛓</span>
+                <div>
+                  <b>Superset con {(ssNext ?? ssPrev)!.ex}</b>
+                  <span>Alterna una serie per esercizio</span>
+                </div>
+              </div>
+            )}
 
             <div className="card fstats">
               <div><span className="fsico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.5V8h-4.5" /></svg></span><b className="num">{sps.length}</b><span className="l">Serie</span></div>

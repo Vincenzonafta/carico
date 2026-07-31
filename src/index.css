@@ -429,6 +429,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 
 /* superset: gruppo legato all'esercizio successivo */
 .excard.ssgroup { border-color:rgba(201,249,78,.4); }
+/* barra "sei in superset con X": si vede prima di caricare, non solo quando il lock ferma */
+.ssbar { display:flex; align-items:center; gap:11px; margin-top:12px; padding:11px 13px;
+  border-radius:13px; background:color-mix(in srgb, var(--lime) 11%, var(--surf));
+  border:1px solid color-mix(in srgb, var(--lime) 45%, transparent); }
+.ssbar .ico { font-size:17px; flex:none; }
+.ssbar b { display:block; font-size:14.5px; font-weight:700; }
+.ssbar span:not(.ico) { display:block; margin-top:1px; font-family:var(--mono); font-size:11px;
+  letter-spacing:.04em; color:var(--mut); }
 
 /* rotella recupero */
 .restsheet { height:auto; max-height:80%; }
@@ -561,7 +569,9 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .serhead span { white-space:nowrap; overflow:hidden; text-align:center; }
 .ocard.dragging { transition:none; z-index:6; background:var(--surf2); box-shadow:0 12px 30px rgba(0,0,0,.55); }
 .ocard.done2 { opacity:.55; }
-.ocard.pair { border-left:3px solid rgba(201,249,78,.55); }
+/* coppia in superset: contorno verde su ENTRAMBI, si vede a colpo d'occhio che vanno insieme
+   (prima era solo un filo a sinistra e non si notava finché non facevi la serie) */
+.ocard.pair { border-color:rgba(201,249,78,.75); border-left:3px solid var(--lime); }
 .ocard .chev { color:var(--mut2); font-size:20px; flex:none; }
 .ocard .meta { margin-top:3px; }
 
