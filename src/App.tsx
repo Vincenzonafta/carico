@@ -309,7 +309,7 @@ export default function App() {
 
       <InstallPrompt />
 
-      {tab === 'oggi' && <Oggi s={s} setS={setS} goAllena={() => setTab('allena')} />}
+      {tab === 'oggi' && <Oggi s={s} setS={setS} go={setTab} />}
       {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} workoutActive={workoutStart != null} />}
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} timerActive={timer != null} />}
@@ -396,8 +396,11 @@ function Ring({ v, color }: { v: number; color: string }) {
   )
 }
 
-function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAllena: () => void }) {
+function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab) => void }) {
   const [minutes, setMinutes] = useState(60)
+  const [openEs, setOpenEs] = useState(false) // anteprima esercizi: chiusa, si apre a richiesta
+  const [ciOpen, setCiOpen] = useState(false) // check-in aperto per modifica (se già fatto oggi)
+  const goAllena = () => go('allena')
   const commitCheckin = (c: State['checkin']) => {
     setS({ ...s, checkin: c, checkins: [...s.checkins.filter((x) => x.date !== today()), c] })
     checkinSalvato(c) // specchio cloud: upsert per giorno
@@ -441,9 +444,6 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
   const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
   const under = mvEntries.filter(([, n]) => n < 8).map(([m]) => m)
 
-  const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
-  const first = s.body.length ? s.body[0].kg : cur
-
   const h = new Date().getHours()
   const hi = h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'
   const nudge = !ciToday
@@ -456,6 +456,9 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
     <>
       <p className="hello">{hi} · <b>{day?.name ?? 'riposo'}</b> in programma oggi</p>
 
+      {/* READINESS: l'unica cosa che merita di stare in cima a schermo pieno — dice se oggi
+          spingere o no. Il consiglio del coach è QUI dentro: prima la stessa identica frase
+          era ripetuta anche in fondo alla pagina in una card sua. */}
       <div className="card ready">
         <Ring v={r} color={rCol} />
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -464,40 +467,15 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
           <div className="rd">{nudge}</div>
         </div>
       </div>
-      {rHist.length >= 2 && (
-        <div className="card" style={{ marginTop: 10, paddingBottom: 8 }}>
-          <div className="mono sm mut" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' }}>Andamento readiness</div>
-          <Sparkline values={rHist} color={rCol} h={48} />
+      {under.length > 0 && (
+        <div className="msg" style={{ marginTop: 10 }}><div className="who">Carico Coach</div>
+          Questa settimana <b>{under.join(', ')}</b> {under.length === 1 ? 'è' : 'sono'} sotto quota: aggiungi 1–2 esercizi per recuperare volume.
         </div>
       )}
 
-      <div className="tiles" style={{ marginTop: 10 }}>
-        <div className="tile"><div className="l">Streak</div><div className="v num">{st} <span className="sm mut">gg</span></div></div>
-        <div className="tile"><div className="l">Settimana</div><div className="v num">{weekSessions} <span className="sm mut">sedute</span></div></div>
-        <div className="tile"><div className="l">Volume 7gg</div><div className="v num">{fmt(weekTon / 1000)} <span className="sm mut">t</span></div></div>
-        <div className="tile"><div className="l">Livello</div><div className="v num">{lvl.n}</div></div>
-      </div>
-
-      <h2>Come stai oggi</h2>
-      <div className="card">
-        <div className="sleepbox">
-          <button className="qbtn" onClick={() => setSleep(ore - 0.5)}>−</button>
-          <div className="sleepval">
-            <div className="num" style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{fmt(ore)}<span className="sm mut"> h</span></div>
-            <div className="l" style={{ marginTop: 4 }}>ore di sonno</div>
-          </div>
-          <button className="qbtn" onClick={() => setSleep(ore + 0.5)}>＋</button>
-        </div>
-        {sliders.map(([k, lab]) => (
-          <div className="sl" key={k}>
-            <div className="top"><b>{lab}</b><span className="val num">{s.checkin[k]}/10</span></div>
-            <input type="range" min={0} max={10} step={1} value={s.checkin[k]}
-              onChange={(e) => set(k, +e.target.value)} />
-          </div>
-        ))}
-      </div>
-
-      <h2>Seduta di oggi</h2>
+      {/* ALLENAMENTO: la card d'azione. L'elenco esercizi non è più sempre aperto — occupava
+          mezza pagina prima ancora di sapere se ti interessa. */}
+      <h2>Oggi ti alleni</h2>
       {items.length ? (
         <div className="card startcard">
           <div className="sh">
@@ -509,37 +487,79 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
             </div>
           </div>
           <button onClick={goAllena}>▶ Inizia l'allenamento</button>
-          <div className="seg" style={{ marginTop: 12 }}>
-            {[60, 45, 30].map((mi) => (
-              <button key={mi} className={'sg' + (minutes === mi ? ' on' : '')} onClick={() => setMinutes(mi)}>{mi} min</button>
-            ))}
-          </div>
-          <div className="plan" style={{ padding: '4px 0 0' }}>
-            {adapted.map((p) => {
-              const pr = proposta(s, p.ex, itemReps(p))
-              return (
-                <div className="pl" key={p.ex}>
-                  <span className="exbar" style={{ background: mcolor(p.muscle) }} />
-                  <div style={{ minWidth: 0 }}><div className="ex" style={{ fontSize: 15 }}>{p.ex}</div>
-                    <div className="meta num"><span style={{ color: mcolor(p.muscle) }}>{p.muscle}</span> · {schemeSummary(p)}</div></div>
-                  <span className="wb num">{pr ? fmt(pr.kg) + ' kg' : 'a sensaz.'}</span>
-                </div>
-              )
-            })}
-          </div>
+          <button className="ghost" style={{ marginTop: 8 }} onClick={() => setOpenEs((v) => !v)}>
+            {openEs ? 'Nascondi gli esercizi' : `Vedi i ${items.length} esercizi e i pesi`}
+          </button>
+          {openEs && (<>
+            <p className="sm mut" style={{ margin: '12px 2px 6px' }}>Quanto tempo hai? La seduta si accorcia tenendo i fondamentali.</p>
+            <div className="seg">
+              {[60, 45, 30].map((mi) => (
+                <button key={mi} className={'sg' + (minutes === mi ? ' on' : '')} onClick={() => setMinutes(mi)}>{mi} min</button>
+              ))}
+            </div>
+            <div className="plan" style={{ padding: '4px 0 0' }}>
+              {adapted.map((p) => {
+                const pr = proposta(s, p.ex, itemReps(p))
+                return (
+                  <div className="pl" key={p.ex}>
+                    <span className="exbar" style={{ background: mcolor(p.muscle) }} />
+                    <div style={{ minWidth: 0 }}><div className="ex" style={{ fontSize: 15 }}>{p.ex}</div>
+                      <div className="meta num"><span style={{ color: mcolor(p.muscle) }}>{p.muscle}</span> · {schemeSummary(p)}</div></div>
+                    <span className="wb num">{pr ? fmt(pr.kg) + ' kg' : 'a sensaz.'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </>)}
         </div>
       ) : (
-        <p className="sm mut" style={{ margin: '4px 2px', lineHeight: 1.6 }}>Giorno di riposo. Scegli un giorno in <b>Schede</b> per allenarti.</p>
+        <div className="card">
+          <p className="sm mut" style={{ margin: 0, lineHeight: 1.6 }}>Giorno di riposo.</p>
+          <button className="ghost" style={{ marginTop: 10 }} onClick={() => go('schede')}>Scegli un giorno da allenare</button>
+        </div>
       )}
 
-      <h2>Nutrizione di oggi</h2>
+      {/* CHECK-IN: azione quotidiana. Fatto = riepilogo compatto; da fare = aperto e sollecitato. */}
+      <h2>Come stai oggi</h2>
       <div className="card">
+        {ciToday && !ciOpen ? (
+          <div className="row" style={{ gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="num" style={{ fontWeight: 700, fontSize: 15 }}>{fmt(ore)} h di sonno</div>
+              <div className="meta num" style={{ marginTop: 3 }}>energia {s.checkin.energia} · doms {s.checkin.doms} · stress {s.checkin.stress}</div>
+            </div>
+            <button className="ghost" style={{ width: 'auto', padding: '9px 14px', fontSize: 13 }} onClick={() => setCiOpen(true)}>Modifica</button>
+          </div>
+        ) : (<>
+          {!ciToday && <p className="sm mut" style={{ margin: '0 0 10px' }}>Venti secondi: i pesi proposti diventano affidabili.</p>}
+          <div className="sleepbox">
+            <button className="qbtn" onClick={() => setSleep(ore - 0.5)}>−</button>
+            <div className="sleepval">
+              <div className="num" style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{fmt(ore)}<span className="sm mut"> h</span></div>
+              <div className="l" style={{ marginTop: 4 }}>ore di sonno</div>
+            </div>
+            <button className="qbtn" onClick={() => setSleep(ore + 0.5)}>＋</button>
+          </div>
+          {sliders.map(([k, lab]) => (
+            <div className="sl" key={k}>
+              <div className="top"><b>{lab}</b><span className="val num">{s.checkin[k]}/10</span></div>
+              <input type="range" min={0} max={10} step={1} value={s.checkin[k]}
+                onChange={(e) => set(k, +e.target.value)} />
+            </div>
+          ))}
+          {ciToday && <button className="ghost" style={{ marginTop: 12 }} onClick={() => setCiOpen(false)}>Fatto</button>}
+        </>)}
+      </div>
+
+      {/* NUTRIZIONE: anteprima + porta al suo tab, come nel riferimento */}
+      <h2>Nutrizione di oggi</h2>
+      <div className="card" style={{ cursor: 'pointer' }} onClick={() => go('cibo')}>
         <div className="kcalhead">
           <div>
             <div className="kcalbig num" style={{ color: kcalLeft < 0 ? 'var(--coral)' : 'var(--chalk)' }}>{Math.abs(Math.round(kcalLeft))}</div>
             <div className="l">{kcalLeft < 0 ? 'kcal oltre il target' : 'kcal rimaste'}</div>
           </div>
-          <div className="kcalsub num">{Math.round(tot.kcal)} <span className="mut">/ {s.target.kcal}</span></div>
+          <div className="kcalsub num">{Math.round(tot.kcal)} <span className="mut">/ {s.target.kcal}</span><span className="chev" style={{ marginLeft: 8 }}>›</span></div>
         </div>
         <div className="macros">
           <MacroRing v={tot.protein} max={s.target.protein} color="var(--teal)" label="Proteine" />
@@ -549,38 +569,21 @@ function Oggi({ s, setS, goAllena }: { s: State; setS: (u: State) => void; goAll
         <div style={{ marginTop: 12 }}><Bar v={wt} max={wg} color="var(--lime)" label="Acqua" unit="ml" /></div>
       </div>
 
-      {mvEntries.length > 0 && (<>
-        <h2>Volume settimanale · per gruppo</h2>
-        <div className="card">
-          {mvEntries.map(([m, n]) => (
-            <div className="bar" key={m}>
-              <span className="bn" style={{ color: mcolor(m) }}>{m}</span>
-              <div className="bt"><i style={{ width: Math.min(100, n / 16 * 100) + '%', background: n < 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
-              <span className="bv num">{n} serie</span>
-            </div>
-          ))}
-          <p className="hint">Target 10–20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = sotto quota</p>
+      {/* SETTIMANA: i numeri di contorno, in fondo. Volume-per-gruppo e andamento peso NON
+          stanno più qui: erano copie esatte di Schede→Stats e di Profilo. */}
+      <h2>La tua settimana</h2>
+      <div className="card" style={{ paddingBottom: rHist.length >= 2 ? 8 : 14 }}>
+        <div className="tiles">
+          <div className="tile"><div className="l">Streak</div><div className="v num">{st} <span className="sm mut">gg</span></div></div>
+          <div className="tile"><div className="l">Sedute</div><div className="v num">{weekSessions}</div></div>
+          <div className="tile"><div className="l">Volume 7gg</div><div className="v num">{fmt(weekTon / 1000)} <span className="sm mut">t</span></div></div>
+          <div className="tile"><div className="l">Livello</div><div className="v num">{lvl.n}</div></div>
         </div>
-      </>)}
-
-      {s.body.length >= 2 && (<>
-        <h2>Andamento peso</h2>
-        <div className="card">
-          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div style={{ fontSize: 28, fontWeight: 800 }} className="num">{fmt(cur)}<span className="sm mut"> kg</span></div>
-            <span className="delta num">{cur - first >= 0 ? '▲ +' : '▼ '}{fmt(cur - first)} kg</span>
-          </div>
-          <Sparkline values={s.body.map((b) => b.kg)} color="#31E0B4" h={50} />
-        </div>
-      </>)}
-
-      <h2>Consiglio del coach</h2>
-      <div className="msg"><div className="who">Carico Coach</div>{nudge}</div>
-      {under.length > 0 && (
-        <div className="msg" style={{ marginTop: 8 }}><div className="who">Carico Coach</div>
-          Questa settimana <b>{under.join(', ')}</b> {under.length === 1 ? 'è' : 'sono'} sotto quota: aggiungi 1–2 esercizi per recuperare volume.
-        </div>
-      )}
+        {rHist.length >= 2 && (<>
+          <div className="mono sm mut" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', marginTop: 14 }}>Andamento readiness</div>
+          <Sparkline values={rHist} color={rCol} h={48} />
+        </>)}
+      </div>
     </>
   )
 }
