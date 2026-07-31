@@ -104,6 +104,12 @@ button:disabled { opacity:.35; }
 /* ============ righe registro ============ */
 .set { display:flex; align-items:center; gap:11px; padding:10px 2px; border-bottom:1px solid var(--hair); font-variant-numeric:tabular-nums; }
 .set:last-child { border-bottom:0; }
+/* senza min-width:0 un figlio flex non scende sotto la larghezza del suo contenuto: un nome
+   lungo spingeva fuori il valore a destra e le scritte si accavallavano. Il nome tronca, il
+   valore a destra non si stringe mai. */
+.set > * { min-width:0; }
+.set b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.set > .meta, .set > .num, .set > span:last-child { flex:none; }
 .set .i { width:24px; height:24px; border-radius:7px; background:var(--surf2); color:var(--mut);
   font-family:var(--mono); font-size:11.5px; display:flex; align-items:center; justify-content:center; flex:none; }
 .set .r { margin-left:auto; }
@@ -729,6 +735,12 @@ body:has(input:focus:not([type=range]), textarea:focus) .focusbar { display:none
 .linklike:active { color:var(--chalk); }
 .linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }
 .authmsg { margin-top:16px; text-align:center; font-size:13.5px; line-height:1.45; color:var(--amber); }
+/* conferma (codice inviato) vs errore: colori diversi, così si capisce al volo cos'è successo */
+.authmsg.okmsg { color:var(--lime); }
+.authmsg.hint2 { color:var(--mut2); font-size:12px; margin-top:10px; }
+/* campo del codice a 6 cifre: grande e spaziato, si legge mentre lo copi dalla mail */
+.otpin { text-align:center; font-size:30px; font-weight:800; letter-spacing:.36em;
+  padding:14px 10px 14px 20px; font-family:var(--mono); }
 
 /* ============ chat coach IA ============ */
 .chatlog { display:flex; flex-direction:column; gap:9px; padding-bottom:4px; }

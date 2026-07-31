@@ -591,6 +591,7 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
 // Tab Schede: gestione schede + calendario allenamenti (coerente con lo stile del Cibo)
 function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State) => void; onStart: () => void; workoutActive: boolean }) {
   const [tab, setTab] = useState<'schede' | 'cal' | 'esercizi' | 'stats'>('schede')
+  const [statsEx, setStatsEx] = useState<string | null>(null) // dettaglio esercizio aperto da Stats
   const repeatDay = (date: string) => {
     const sets = s.log.filter((l) => l.date === date)
     const already = new Set([...curItems(s).map((i) => i.ex), ...s.extras.filter((e) => e.date === today()).map((e) => e.item.ex)])
@@ -621,7 +622,8 @@ function Schede({ s, setS, onStart, workoutActive }: { s: State; setS: (u: State
       {tab === 'schede' && <SchedeManager s={s} setS={setS} onStart={onStart} workoutActive={workoutActive} />}
       {tab === 'cal' && <Calendario s={s} setS={setS} onRepeat={repeatDay} onDelete={deleteDay} />}
       {tab === 'esercizi' && <Esercizi s={s} setS={setS} />}
-      {tab === 'stats' && <Statistiche s={s} />}
+      {tab === 'stats' && <Statistiche s={s} onOpen={setStatsEx} />}
+      {statsEx && <ExStats s={s} setS={setS} ex={statsEx} onClose={() => setStatsEx(null)} />}
     </>
   )
 }
@@ -3278,7 +3280,7 @@ function Esercizi({ s, setS }: { s: State; setS: (u: State) => void }) {
   )
 }
 
-function Statistiche({ s }: { s: State }) {
+function Statistiche({ s, onOpen }: { s: State; onOpen: (ex: string) => void }) {
   const [gg, setGg] = useState(30) // finestra: cambia tutto quello che c'è sotto
   const [openDay, setOpenDay] = useState<string | null>(null)
   const since = new Date(Date.now() - gg * 86400000).toISOString().slice(0, 10)
@@ -3354,7 +3356,7 @@ function Statistiche({ s }: { s: State }) {
         <h2>Forza per esercizio</h2>
         <div className="card" style={{ padding: '4px 12px' }}>
           {forzaEx.map((f) => (
-            <div className="set" key={f.ex}>
+            <div className="set" key={f.ex} style={{ cursor: 'pointer' }} onClick={() => onOpen(f.ex)}>
               <span className="exbar" style={{ background: mcolor(muscleOf(s, f.ex)), minHeight: 26 }} />
               <div style={{ minWidth: 0 }}>
                 <b className="sm">{f.ex}</b>
@@ -3363,6 +3365,7 @@ function Statistiche({ s }: { s: State }) {
               <span className="num" style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13, color: f.delta > 0 ? 'var(--lime)' : f.delta < 0 ? 'var(--coral)' : 'var(--mut2)' }}>
                 {f.sedute < 2 ? '—' : `${f.delta > 0 ? '+' : ''}${f.delta}%`}
               </span>
+              <span className="chev">›</span>
             </div>
           ))}
           <p className="hint">1RM stimato, aggiustato per lo sforzo · variazione nel periodo</p>
@@ -3427,10 +3430,13 @@ function Statistiche({ s }: { s: State }) {
                 {exs.map((ex) => {
                   const ss = s.log.filter((l) => l.date === d && l.ex === ex)
                   return (
-                    <div className="set" key={ex}>
+                    // stopPropagation: il tap apre l'esercizio, non richiude la card della seduta
+                    <div className="set" key={ex} style={{ cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); onOpen(ex) }}>
                       <span className="exbar" style={{ background: mcolor(muscleOf(s, ex)), minHeight: 24 }} />
                       <b className="sm">{ex}{prs.includes(ex) && <span className="prtag" style={{ marginLeft: 8 }}>★</span>}</b>
                       <span className="meta num" style={{ marginLeft: 'auto' }}>{ss.map((x) => `${fmt(x.kg)}×${x.reps}`).join(' · ')}</span>
+                      <span className="chev">›</span>
                     </div>
                   )
                 })}
@@ -3810,61 +3816,150 @@ function traduciAuth(m: string): string {
   if (l.includes('password should be') || l.includes('at least 6')) return 'La password deve avere almeno 6 caratteri.'
   if (l.includes('unable to validate email') || l.includes('invalid email')) return 'Email non valida.'
   if (l.includes('rate limit') || l.includes('too many')) return 'Troppi tentativi: riprova tra poco.'
-  if (l.includes('email not confirmed')) return 'Devi prima confermare l\'email (controlla la posta).'
+  if (l.includes('email not confirmed')) return 'Devi prima confermare l\'email: ti ho inviato un codice.'
+  if (l.includes('token has expired') || l.includes('expired')) return 'Codice scaduto: chiedine uno nuovo.'
+  if (l.includes('invalid token') || l.includes('token not found') || l.includes('otp')) return 'Codice non valido: ricontrollalo.'
+  if (l.includes('same password')) return 'La nuova password è uguale alla vecchia.'
   return m
 }
 
 // Form di autenticazione riusabile: gate a schermo intero e card in Profilo.
 // Messaggi inline (non toast che spariscono); il post-login (chiusura gate) avviene via onAuthStateChange.
+// 'in' accedi · 'up' registrati · 'otp' verifica il codice ricevuto via email
+// · 'forgot' chiedi il codice di recupero · 'newpw' scegli la nuova password
+type AuthMode = 'in' | 'up' | 'otp' | 'forgot' | 'newpw'
+
 function AuthForm() {
-  const [mode, setMode] = useState<'in' | 'up'>('in')
+  const [mode, setMode] = useState<AuthMode>('in')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
+  const [code, setCode] = useState('')
+  // che tipo di codice sto verificando: conferma registrazione o recupero password
+  const [otpKind, setOtpKind] = useState<'signup' | 'recovery'>('signup')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [ok, setOk] = useState<string | null>(null) // messaggio positivo, distinto dall'errore
   if (!supa) return null
   const sb = supa
+  const em = email.trim()
+  const pulisci = () => { setMsg(null); setOk(null) }
+  const vai = (m: AuthMode) => { pulisci(); setCode(''); setMode(m) }
+
+  const registra = async () => {
+    const r = await sb.auth.signUp({ email: em, password: pw })
+    if (r.error) {
+      const t = traduciAuth(r.error.message)
+      if (/già registrata/.test(t)) setMode('in') // email esistente: porta al login
+      return setMsg(t)
+    }
+    // Su alcune config l'email già registrata non dà errore: torna un utente senza identità
+    if (r.data.user && (r.data.user.identities?.length ?? 0) === 0) {
+      setMode('in'); return setMsg('Questa email è già registrata: accedi con la tua password.')
+    }
+    if (r.data.session) return // confermata subito: onAuthStateChange chiude il gate
+    setOtpKind('signup'); setMode('otp')
+    setOk(`Ti ho mandato un codice a ${em}. Scrivilo qui sotto per confermare l'account.`)
+  }
+
+  const accedi = async () => {
+    const r = await sb.auth.signInWithPassword({ email: em, password: pw })
+    if (!r.error) return // onAuthStateChange chiude il gate
+    // non confermata: invece di lasciarlo bloccato, gli rimando il codice e lo porto a verificarlo
+    if (/not confirmed/i.test(r.error.message)) {
+      await sb.auth.resend({ type: 'signup', email: em })
+      setOtpKind('signup'); setMode('otp')
+      return setOk(`Questo account non è ancora confermato: ti ho rimandato un codice a ${em}.`)
+    }
+    setMsg(traduciAuth(r.error.message))
+  }
+
+  const verifica = async () => {
+    const token = code.replace(/\D/g, '')
+    if (token.length < 6) return setMsg('Il codice è di 6 cifre.')
+    const r = await sb.auth.verifyOtp({ email: em, token, type: otpKind })
+    if (r.error) return setMsg(traduciAuth(r.error.message))
+    // recupero: ora ho una sessione valida e posso cambiare la password
+    if (otpKind === 'recovery') { vai('newpw'); setOk('Codice giusto. Scegli la nuova password.') }
+    // registrazione: la sessione c'è, onAuthStateChange chiude il gate
+  }
+
+  const rinvia = async () => {
+    const r = otpKind === 'signup'
+      ? await sb.auth.resend({ type: 'signup', email: em })
+      : await sb.auth.resetPasswordForEmail(em)
+    if (r.error) return setMsg(traduciAuth(r.error.message))
+    setOk('Codice rinviato: controlla la posta (anche lo spam).')
+  }
+
+  const recupera = async () => {
+    const r = await sb.auth.resetPasswordForEmail(em)
+    if (r.error) return setMsg(traduciAuth(r.error.message))
+    setOtpKind('recovery'); setMode('otp')
+    setOk(`Ti ho mandato un codice a ${em} per reimpostare la password.`)
+  }
+
+  const cambiaPw = async () => {
+    const r = await sb.auth.updateUser({ password: pw })
+    if (r.error) return setMsg(traduciAuth(r.error.message))
+    setOk('Password aggiornata.') // la sessione è già attiva: si entra
+  }
+
   const go = async () => {
-    setMsg(null)
-    const em = email.trim()
-    if (!em || pw.length < 6) return setMsg('Inserisci email e password (almeno 6 caratteri).')
+    pulisci()
+    // ogni schermata ha i suoi campi obbligatori
+    if (mode !== 'otp' && !em) return setMsg('Scrivi la tua email.')
+    if ((mode === 'in' || mode === 'up' || mode === 'newpw') && pw.length < 6) return setMsg('La password deve avere almeno 6 caratteri.')
     setBusy(true)
     try {
-      if (mode === 'in') {
-        const r = await sb.auth.signInWithPassword({ email: em, password: pw })
-        if (r.error) setMsg(traduciAuth(r.error.message))
-        // se ok, onAuthStateChange chiude il gate
-      } else {
-        const r = await sb.auth.signUp({ email: em, password: pw })
-        if (r.error) {
-          const t = traduciAuth(r.error.message)
-          if (/già registrata/.test(t)) setMode('in') // email esistente: porta al login
-          return setMsg(t)
-        }
-        // Su alcune config Supabase l'email esistente non dà errore ma user con identities vuote
-        if (r.data.user && (r.data.user.identities?.length ?? 0) === 0) {
-          setMode('in'); setMsg('Questa email è già registrata: accedi con la tua password.')
-        } else if (!r.data.session) {
-          setMsg('Ti ho inviato una mail: conferma l\'account, poi accedi.')
-        }
-        // se c'è la sessione, onAuthStateChange chiude il gate
-      }
+      if (mode === 'in') await accedi()
+      else if (mode === 'up') await registra()
+      else if (mode === 'otp') await verifica()
+      else if (mode === 'forgot') await recupera()
+      else if (mode === 'newpw') await cambiaPw()
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Qualcosa è andato storto: riprova.')
     } finally { setBusy(false) }
   }
+
+  const etichetta = mode === 'in' ? 'Entra' : mode === 'up' ? 'Crea account'
+    : mode === 'otp' ? 'Conferma' : mode === 'forgot' ? 'Mandami il codice' : 'Salva la password'
+
   return (
     <>
-      <input type="email" placeholder="email" autoComplete="email" inputMode="email"
-        value={email} onChange={(e) => setEmail(e.target.value)} />
-      <input type="password" placeholder="password (min 6)" style={{ marginTop: 8 }}
-        autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-        value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
-      <button disabled={busy} style={{ marginTop: 12 }} onClick={go}>
-        {busy ? '…' : mode === 'in' ? 'Entra' : 'Crea account'}
-      </button>
-      <button className="linklike" disabled={busy} onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setMsg(null) }}>
-        {mode === 'in' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
-      </button>
+      {/* l'email si mostra solo dove serve scriverla: nella verifica è già decisa */}
+      {mode !== 'otp' && mode !== 'newpw' && (
+        <input type="email" placeholder="email" autoComplete="email" inputMode="email"
+          value={email} onChange={(e) => setEmail(e.target.value)} />
+      )}
+      {(mode === 'in' || mode === 'up' || mode === 'newpw') && (
+        <input type="password" placeholder={mode === 'newpw' ? 'nuova password (min 6)' : 'password (min 6)'}
+          style={{ marginTop: mode === 'newpw' ? 0 : 8 }}
+          autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+          value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
+      )}
+      {mode === 'otp' && (
+        <input className="otpin num" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+          placeholder="000000" value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
+      )}
+
+      <button disabled={busy} style={{ marginTop: 12 }} onClick={go}>{busy ? '…' : etichetta}</button>
+
+      {mode === 'otp' && (<>
+        <button className="linklike" disabled={busy} onClick={rinvia}>Non è arrivato? Rimandamelo</button>
+        <button className="linklike" disabled={busy} onClick={() => vai('in')}>Torna all'accesso</button>
+      </>)}
+      {mode === 'in' && (<>
+        <button className="linklike" disabled={busy} onClick={() => vai('up')}>Non hai un account? Registrati</button>
+        <button className="linklike" disabled={busy} onClick={() => vai('forgot')}>Password dimenticata?</button>
+      </>)}
+      {mode === 'up' && <button className="linklike" disabled={busy} onClick={() => vai('in')}>Hai già un account? Accedi</button>}
+      {mode === 'forgot' && <button className="linklike" disabled={busy} onClick={() => vai('in')}>Torna all'accesso</button>}
+
+      {ok && <p className="authmsg okmsg">{ok}</p>}
       {msg && <p className="authmsg">{msg}</p>}
+      {mode === 'otp' && <p className="authmsg hint2">Se al posto del codice ricevi un link, aprilo: va bene lo stesso.</p>}
     </>
   )
 }
