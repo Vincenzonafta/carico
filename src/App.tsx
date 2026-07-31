@@ -1074,12 +1074,6 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
                       <span className="fhint">per le serie senza sforzo</span></div>
                   </div>
                 </>)}
-                {/* isTimed indovina da sé plank & co: qui si conferma o si corregge */}
-                <label className="tswitch full" style={{ marginTop: 12 }}>
-                  <input type="checkbox" checked={isTimed(it)}
-                    onChange={(e) => updItem(i, { timed: e.target.checked })} />
-                  <span>Esercizio a tempo — le ripetizioni sono <b>secondi</b> e non fanno volume</span>
-                </label>
               </div>
 
               <div className="card" style={{ marginTop: 12 }}>

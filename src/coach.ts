@@ -96,14 +96,12 @@ export const e1rm = (kg: number, reps: number) => kg * (1 + reps / 30)
 export const round25 = (x: number) => Math.round(x / 2.5) * 2.5
 
 // ===== ESERCIZI A TEMPO (plank, isometrie, cardio): i "reps" sono SECONDI =====
-// Il nome basta a riconoscerli nelle schede vecchie, dove il flag non esiste;
-// il flag esplicito, quando c'è, ha sempre l'ultima parola.
-// Verificata sui 90 esercizi in archivio. Attenzione ai tranelli, già costati due
-// falsi positivi: "camminat" prendeva gli AFFONDI camminati, "corda" il push down
-// alla corda, e "bici" prenderebbe i BICIpiti. Nel dubbio si lascia fuori: sbagliare
-// per difetto costa una spunta nell'editor, sbagliare per eccesso falsa le statistiche.
-const TIMED_RE = /plank|isometri|\bhollow\b|wall ?sit|cyclette|tapis|\bcorsa\b|\bcamminata\b|vogatore|\bbici(cletta)?\b/i
-export const isTimed = (it: { ex: string; timed?: boolean }) => it.timed ?? TIMED_RE.test(it.ex)
+// PARCHEGGIATO (27 lug): gestione da ripensare, cardio & co. si faranno per bene più avanti.
+// Tolto sia l'interruttore nell'editor sia il riconoscimento dal NOME (una regex su plank,
+// cyclette, ecc.): senza interruttore un falso positivo sarebbe stato incorreggibile.
+// Resta il flag esplicito e tutta la logica che ci si appoggia (volume ed e1rm escludono le
+// serie a tempo), così i dati già registrati o importati restano interpretati bene.
+export const isTimed = (it: { ex: string; timed?: boolean }) => it.timed === true
 
 /**
  * Volume sollevato in kg. UNICA definizione: le serie a tempo restano fuori,
