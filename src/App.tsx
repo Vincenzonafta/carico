@@ -3279,21 +3279,167 @@ function Esercizi({ s, setS }: { s: State; setS: (u: State) => void }) {
 }
 
 function Statistiche({ s }: { s: State }) {
-  const mv = muscleVolume(s)
+  const [gg, setGg] = useState(30) // finestra: cambia tutto quello che c'è sotto
+  const [openDay, setOpenDay] = useState<string | null>(null)
+  const since = new Date(Date.now() - gg * 86400000).toISOString().slice(0, 10)
+  const log = s.log.filter((l) => l.date >= since)
+  const giorni = [...new Set(log.map((l) => l.date))].sort().reverse()
+
+  // riepilogo del periodo
+  const nSed = giorni.length
+  const vol = volume(log)
+  const minTot = giorni.reduce((a, d) => a + Math.round((s.durate?.[d] ?? 0) / 60), 0)
+  const nPr = giorni.reduce((a, d) => a + prsForSession(s.log, d).length, 0)
+
+  // peso corporeo nel periodo: "sto aumentando o calando?"
+  const bodyP = s.body.filter((b) => b.date >= since)
+  const bodyAll = s.body.length ? s.body[s.body.length - 1].kg : 0
+  const dBody = bodyP.length >= 2 ? bodyP[bodyP.length - 1].kg - bodyP[0].kg : 0
+
+  // forza per esercizio: 1RM aggiustato-RPE a inizio vs fine periodo → "sto salendo su cosa?"
+  const forzaEx = [...new Set(log.filter((l) => !l.timed && l.kg > 0).map((l) => l.ex))].map((ex) => {
+    const ds = [...new Set(s.log.filter((l) => l.ex === ex && !l.timed && l.kg > 0 && l.date >= since).map((l) => l.date))].sort()
+    const e1 = (d: string) => Math.max(...s.log.filter((l) => l.ex === ex && l.date === d && !l.timed && l.kg > 0)
+      .map((l) => (l.rpe != null ? e1rmRpe(l.kg, l.reps, l.rpe) : e1rm(l.kg, l.reps))))
+    if (ds.length < 2) return { ex, ora: ds.length ? e1(ds[0]) : 0, delta: 0, sedute: ds.length }
+    const a = e1(ds[0]), b = e1(ds[ds.length - 1])
+    return { ex, ora: b, delta: a > 0 ? Math.round(((b - a) / a) * 100) : 0, sedute: ds.length }
+  }).filter((x) => x.ora > 0).sort((a, b) => b.delta - a.delta)
+
+  // alimentazione: la domanda vera è "mangio diverso quando mi alleno?"
+  const kcalDi = (d: string) => Math.round(nutritionToday(s.meals, d).kcal)
+  const giorniConCibo = [...new Set(s.meals.filter((m) => m.date >= since).map((m) => m.date))]
+  const kcalAll = giorniConCibo.filter((d) => giorni.includes(d)).map(kcalDi)
+  const kcalRip = giorniConCibo.filter((d) => !giorni.includes(d)).map(kcalDi)
+  const media = (a: number[]) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : 0)
+
+  const mv = muscleVolume(s, gg)
   const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
+  const volMedio = nSed ? vol / nSed : 0
+
   return (
     <>
-      <h2>Volume per gruppo · 7 giorni</h2>
+      <div className="seg" style={{ marginTop: 4 }}>
+        {[7, 30, 90].map((n) => (
+          <button key={n} className={'sg' + (gg === n ? ' on' : '')} onClick={() => setGg(n)}>{n} giorni</button>
+        ))}
+      </div>
+
+      <h2>Riepilogo</h2>
+      <div className="card">
+        <div className="tiles">
+          <div className="tile"><div className="l">Sedute</div><div className="v num">{nSed}</div></div>
+          <div className="tile"><div className="l">Volume</div><div className="v num">{fmt(vol / 1000)} <span className="sm mut">t</span></div></div>
+          <div className="tile"><div className="l">Tempo</div><div className="v num">{minTot >= 60 ? `${Math.floor(minTot / 60)}h ${minTot % 60}` : minTot} <span className="sm mut">min</span></div></div>
+          <div className="tile"><div className="l">Record</div><div className="v num" style={{ color: nPr ? 'var(--amber)' : undefined }}>{nPr}</div></div>
+        </div>
+      </div>
+
+      {s.body.length >= 2 && (<>
+        <h2>Peso corporeo</h2>
+        <div className="card">
+          <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
+            <b className="num" style={{ fontSize: 28, fontWeight: 800 }}>{fmt(bodyAll)} <span className="sm mut" style={{ fontSize: 14 }}>kg</span></b>
+            {bodyP.length >= 2 && (
+              <span className="num" style={{ fontWeight: 700, color: dBody > 0 ? 'var(--amber)' : dBody < 0 ? 'var(--teal)' : 'var(--mut)' }}>
+                {dBody > 0 ? '▲ +' : dBody < 0 ? '▼ ' : ''}{fmt(Math.abs(dBody))} kg <span className="sm mut">in {gg} giorni</span>
+              </span>
+            )}
+          </div>
+          <Grafico values={s.body.map((b) => b.kg)} color="#31E0B4" h={100} />
+        </div>
+      </>)}
+
+      {forzaEx.length > 0 && (<>
+        <h2>Forza per esercizio</h2>
+        <div className="card" style={{ padding: '4px 12px' }}>
+          {forzaEx.map((f) => (
+            <div className="set" key={f.ex}>
+              <span className="exbar" style={{ background: mcolor(muscleOf(s, f.ex)), minHeight: 26 }} />
+              <div style={{ minWidth: 0 }}>
+                <b className="sm">{f.ex}</b>
+                <div className="meta num">{fmt(round25(f.ora))} kg · {f.sedute} {f.sedute === 1 ? 'seduta' : 'sedute'}</div>
+              </div>
+              <span className="num" style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 13, color: f.delta > 0 ? 'var(--lime)' : f.delta < 0 ? 'var(--coral)' : 'var(--mut2)' }}>
+                {f.sedute < 2 ? '—' : `${f.delta > 0 ? '+' : ''}${f.delta}%`}
+              </span>
+            </div>
+          ))}
+          <p className="hint">1RM stimato, aggiustato per lo sforzo · variazione nel periodo</p>
+        </div>
+      </>)}
+
+      {(kcalAll.length > 0 || kcalRip.length > 0) && (<>
+        <h2>Alimentazione</h2>
+        <div className="card">
+          <div className="tiles">
+            <div className="tile"><div className="l">Giorni di allenamento</div><div className="v num">{media(kcalAll) || '—'} <span className="sm mut">kcal</span></div></div>
+            <div className="tile"><div className="l">Giorni di riposo</div><div className="v num">{media(kcalRip) || '—'} <span className="sm mut">kcal</span></div></div>
+          </div>
+          <p className="hint">Media giornaliera · target {s.target.kcal} kcal</p>
+        </div>
+      </>)}
+
+      <h2>Volume per gruppo</h2>
       <div className="card">
         {mvEntries.length ? mvEntries.map(([m, n]) => (
           <div className="bar" key={m}>
             <span className="bn" style={{ color: mcolor(m) }}>{m}</span>
-            <div className="bt"><i style={{ width: Math.min(100, (n / 16) * 100) + '%', background: n < 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
+            <div className="bt"><i style={{ width: Math.min(100, (n / (gg / 7 * 16)) * 100) + '%', background: n < gg / 7 * 8 ? 'var(--amber)' : 'var(--lime)' }} /></div>
             <span className="bv num">{n} serie</span>
           </div>
-        )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessuna serie negli ultimi 7 giorni.</p>}
-        <p className="hint">Target: 10-20 serie/gruppo · <span style={{ color: 'var(--amber)' }}>ambra</span> = poco allenato</p>
+        )) : <p className="sm mut" style={{ margin: '10px 2px' }}>Nessuna serie nel periodo.</p>}
+        <p className="hint">Target 10-20 serie/gruppo a settimana · <span style={{ color: 'var(--amber)' }}>ambra</span> = poco allenato</p>
       </div>
+
+      {/* IL CUORE: una riga per giorno di allenamento, con tutto quello che serve a capire
+          com'è andata quel giorno — carico, sforzo, come stavi, cosa avevi mangiato. */}
+      <h2>Sedute · {nSed}</h2>
+      {giorni.map((d) => {
+        const sum = sessionSummary(s.log, d)
+        const rd = readinessOn(s, d)
+        const prs = prsForSession(s.log, d)
+        const dur = Math.round((s.durate?.[d] ?? 0) / 60)
+        const kc = kcalDi(d)
+        const exs = [...new Set(s.log.filter((l) => l.date === d).map((l) => l.ex))]
+        const mus = [...new Set(exs.map((e) => muscleOf(s, e)))]
+        const sopra = volMedio > 0 && sum.tonnage > volMedio * 1.1
+        const aperto = openDay === d
+        return (
+          <div className="card sedcard" key={d} onClick={() => setOpenDay(aperto ? null : d)}>
+            <div className="row" style={{ alignItems: 'baseline', gap: 8 }}>
+              <b style={{ fontSize: 15.5 }}>{new Date(d + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}</b>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flex: 'none' }}>
+                {prs.length > 0 && <span className="prtag">★ {prs.length}</span>}
+                {rd != null && <span className="r num" style={{ color: rColor(rd), background: 'var(--surf2)' }} title="come stavi quel giorno">⚡{rd}</span>}
+                {sum.avgRpe > 0 && <span className={'r num ' + (sum.avgRpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(sum.avgRpe)}</span>}
+              </span>
+            </div>
+            <div className="meta" style={{ marginTop: 5 }}>{mus.map((m) => <span key={m} className="muspill"><i style={{ background: mcolor(m) }} />{m}</span>)}</div>
+            <div className="sedstat num">
+              <span><b>{fmt(sum.tonnage / 1000)}</b> t{sopra && <i className="su" title="sopra la tua media"> ▲</i>}</span>
+              <span><b>{sum.sets}</b> serie</span>
+              {dur > 0 && <span><b>{dur}</b> min</span>}
+              {kc > 0 && <span><b>{kc}</b> kcal</span>}
+            </div>
+            {aperto && (
+              <div style={{ marginTop: 10 }}>
+                {exs.map((ex) => {
+                  const ss = s.log.filter((l) => l.date === d && l.ex === ex)
+                  return (
+                    <div className="set" key={ex}>
+                      <span className="exbar" style={{ background: mcolor(muscleOf(s, ex)), minHeight: 24 }} />
+                      <b className="sm">{ex}{prs.includes(ex) && <span className="prtag" style={{ marginLeft: 8 }}>★</span>}</b>
+                      <span className="meta num" style={{ marginLeft: 'auto' }}>{ss.map((x) => `${fmt(x.kg)}×${x.reps}`).join(' · ')}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {!giorni.length && <div className="card"><p className="sm mut" style={{ margin: 0 }}>Nessun allenamento negli ultimi {gg} giorni.</p></div>}
     </>
   )
 }
