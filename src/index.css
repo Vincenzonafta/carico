@@ -241,6 +241,13 @@ body:has(input:focus:not([type=range]), textarea:focus) .timerbar { display:none
 .rmcell b { font-size:17px; font-weight:800; }
 .rmcell span { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--mut2); }
 
+/* ★ sulla serie che ha battuto il record: resta lì anche dopo che la festa è passata */
+.prtag { flex:none; font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--amber); background:rgba(245,184,74,.16);
+  border-radius:999px; padding:3px 9px; white-space:nowrap; }
+.wrow.done.isPr { background:linear-gradient(90deg, rgba(245,184,74,.10), transparent 70%);
+  border-radius:10px; padding-left:6px; margin-left:-6px; }
+
 .hint { font-family:var(--mono); font-size:12.5px; color:var(--mut); margin:10px 2px 2px; }
 .hint b { color:var(--lime); font-weight:700; }
 

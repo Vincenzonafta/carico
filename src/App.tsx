@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, e1rm,
   e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale, progressione, contestoEsercizio,
-  historyDates, bestE1rm, avgRpeOf, record,
+  historyDates, bestE1rm, avgRpeOf, record, prSerie,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
@@ -1869,6 +1869,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
         const tag = schemeTag(it)
         const isExtra = idx >= plan.length
         const sessNote = sessionExOf(s, it.ex, today()) // nota e video-serie di OGGI su questo esercizio
+        const prSet = prSerie(s.log, it.ex, today()) // quale serie di oggi ha battuto il record
         const demoVideo = (s.exVideo ?? {})[it.ex] // dimostrazione, vale sempre
         const ss = inSS(idx)
         // Superset A→B→A→B stretto: A max una serie avanti su B, B mai pari/oltre A.
@@ -1963,13 +1964,15 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                 if (i < done) {
                   const logged = logOf(it.ex)[i]
                   return (
-                    <div className="wrow done" key={i}>
+                    <div className={'wrow done' + (prSet[i] ? ' isPr' : '')} key={i}>
                       <span className="sidx ok">✓</span>
                       <b className="num" style={{ fontSize: 14 }}>
                         {logged.timed
                           ? <>{logged.reps}s{logged.kg > 0 && <> · {fmt(logged.kg)} kg</>}</>
                           : <>{fmt(logged.kg)} kg × {logged.reps}</>}
                       </b>
+                      {/* ★ sulla serie che HA fatto il record: la festa passa, questo resta */}
+                      {prSet[i] && <span className="prtag" title="Record su questa serie">★ record</span>}
                       {logged.rpe != null && <span className={'r num ' + (logged.rpe >= 8.5 ? 'r-hi' : 'r-ok')}>RPE {fmt(logged.rpe)} · RIR {fmt(10 - logged.rpe)}</span>}
                       {/* video di QUESTA serie: sta sulla riga già fatta, che è la sola con
                           spazio e l'unico momento in cui il video può esistere davvero */}

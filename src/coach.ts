@@ -218,6 +218,25 @@ export function obiettiviProgressione(s: State, ex: string, reps: number, posOgg
   }
 }
 
+/**
+ * Per ogni serie di `ex` fatta in `date` (nell'ordine in cui è stata eseguita), dice se ha
+ * battuto il miglior 1RM stimato fino a quel momento — storico dei giorni prima PIÙ le serie
+ * già fatte oggi. Stessa regola della festa dei record, così il ★ e i coriandoli concordano.
+ * La primissima serie in assoluto non è un record: non c'è niente da battere.
+ */
+export function prSerie(log: SetLog[], ex: string, date: string): boolean[] {
+  const valida = (l: SetLog) => l.ex === ex && !l.timed && l.kg > 0
+  let best = 0
+  for (const l of log) if (valida(l) && l.date < date) best = Math.max(best, e1rm(l.kg, l.reps))
+  return log.filter((l) => l.ex === ex && l.date === date).map((l) => {
+    if (!valida(l)) return false
+    const e = e1rm(l.kg, l.reps)
+    const pr = best > 0 && e > best + 0.01
+    if (e > best) best = e
+    return pr
+  })
+}
+
 export function massimale(s: State, ex: string): { kg: number; fonte: 'ref' | 'stima' | 'nessuno' } {
   const r = (s.refMax ?? {})[ex]
   // reps=1 è un 1RM VERO: vale il peso stesso. Epley a 1 rep lo gonferebbe (120→124).
