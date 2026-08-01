@@ -51,11 +51,34 @@ sviluppo" e può consegnare in ritardo o finire in spam. Quando si esaurisce, l'
 "Troppi tentativi: riprova tra poco" e la registrazione si blocca.
 
 ### Quale servizio
-- **Brevo** — 300 email al giorno gratis e, soprattutto, **non serve un dominio tuo**: basta
-  verificare un singolo indirizzo mittente (anche una Gmail). È la scelta giusta se non hai
-  un dominio.
-- **Resend** — più pulito, ma sul piano gratuito puoi scrivere **solo a te stesso** finché
-  non colleghi un dominio che possiedi. Ottimo se hai già un dominio.
+- **Gmail** — la via più corta per un'app personale: nessuna iscrizione a servizi, nessun
+  dominio, nessun modulo aziendale. ~500 email al giorno, che per un uso privato sono tante.
+- **Brevo** — 300 al giorno, non serve un dominio (basta verificare un mittente). Nel modulo
+  d'iscrizione chiede un "nome azienda": **non devi avere una società**, ci metti il tuo nome
+  e il tuo indirizzo. Può però chiederti di completare il profilo prima di abilitare l'SMTP.
+- **Resend** — il più pulito, ma sul piano gratuito scrivi **solo a te stesso** finché non
+  colleghi un dominio che possiedi. Ottimo se un dominio ce l'hai già.
+
+### Gmail, passo per passo
+1. Sul tuo account Google serve la **verifica in due passaggi attiva** (senza, le password
+   per le app non esistono proprio).
+   *Account Google → Sicurezza → Verifica in due passaggi*
+2. *Account Google → Sicurezza → **Password per le app*** → creane una, chiamala "Carico".
+   Ti dà 16 caratteri: copiali, non si rivedono più.
+
+In Supabase → **Project Settings → Authentication → SMTP Settings**:
+
+| Campo | Valore |
+|---|---|
+| Host | `smtp.gmail.com` |
+| Port | `587` |
+| Username | il tuo indirizzo Gmail per intero |
+| Password | la **password per le app** da 16 caratteri (non quella del tuo account) |
+| Sender email | lo stesso indirizzo Gmail |
+| Sender name | `Carico` |
+
+Da sapere: il destinatario vedrà il tuo indirizzo personale come mittente, e Gmail non è
+pensato per invii di massa — ma per i codici di conferma di un'app tua è perfetto e gratis.
 
 ### Brevo, passo per passo
 1. Crea l'account su brevo.com.
