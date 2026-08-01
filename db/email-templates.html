@@ -1,0 +1,75 @@
+<!--
+  Template email di CARICO — da incollare in Supabase:
+  Authentication → Emails → Templates
+
+  REGOLE delle email (non è una pagina web):
+  · CSS solo INLINE. I blocchi <style> vengono buttati via da parecchi client, Gmail compreso
+    quando inoltra o su alcune app mobili. Ciò che è inline sopravvive sempre.
+  · Layout con <table>, non con flex/grid: Outlook usa il motore di Word e li ignora.
+  · Niente font dal web: si usa lo stack di sistema.
+  · Il colore di sfondo va messo sulle <td>, non solo sul <body>: diversi client il body lo ignorano.
+  · {{ .Token }} è il codice · {{ .ConfirmationURL }} è il link. Possono convivere.
+-->
+
+<!-- ═══════════════════ 1. CONFIRM SIGNUP ═══════════════════ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0D13;margin:0;padding:28px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:460px;background-color:#1B2230;border:1px solid #566173;border-radius:18px;">
+      <tr><td style="padding:26px 26px 0;">
+        <span style="font-size:20px;font-weight:800;letter-spacing:3px;color:#FFFFFF;">CARICO</span><span style="display:inline-block;width:9px;height:9px;background-color:#C9F94E;border-radius:3px;margin-left:7px;"></span>
+      </td></tr>
+
+      <tr><td style="padding:20px 26px 0;">
+        <h1 style="margin:0;font-size:21px;line-height:1.3;color:#FFFFFF;font-weight:800;">Confermiamo che sei tu</h1>
+        <p style="margin:9px 0 0;font-size:15px;line-height:1.55;color:#C6D0DC;">Scrivi questo codice nell'app per finire la registrazione.</p>
+      </td></tr>
+
+      <tr><td style="padding:20px 26px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#2C3644;border:1px solid #566173;border-radius:14px;">
+          <tr><td align="center" style="padding:20px 10px;">
+            <span style="font-family:'Courier New',Consolas,monospace;font-size:34px;font-weight:800;letter-spacing:9px;color:#C9F94E;">{{ .Token }}</span>
+          </td></tr>
+        </table>
+        <p style="margin:10px 0 0;font-size:12.5px;line-height:1.5;color:#9BA7B6;">Scade tra un'ora. Se non hai richiesto tu la registrazione, ignora questa email.</p>
+      </td></tr>
+
+      <tr><td style="padding:18px 26px 26px;">
+        <p style="margin:0;font-size:13.5px;line-height:1.55;color:#9BA7B6;">
+          Preferisci un tocco solo? <a href="{{ .ConfirmationURL }}" style="color:#C9F94E;text-decoration:underline;">Conferma da qui</a>.
+        </p>
+      </td></tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-size:11.5px;color:#7B8794;">Carico · il tuo allenamento, i tuoi dati</p>
+  </td></tr>
+</table>
+
+
+<!-- ═══════════════════ 2. RESET PASSWORD ═══════════════════ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0D13;margin:0;padding:28px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:460px;background-color:#1B2230;border:1px solid #566173;border-radius:18px;">
+      <tr><td style="padding:26px 26px 0;">
+        <span style="font-size:20px;font-weight:800;letter-spacing:3px;color:#FFFFFF;">CARICO</span><span style="display:inline-block;width:9px;height:9px;background-color:#C9F94E;border-radius:3px;margin-left:7px;"></span>
+      </td></tr>
+
+      <tr><td style="padding:20px 26px 0;">
+        <h1 style="margin:0;font-size:21px;line-height:1.3;color:#FFFFFF;font-weight:800;">Nuova password</h1>
+        <p style="margin:9px 0 0;font-size:15px;line-height:1.55;color:#C6D0DC;">Scrivi questo codice nell'app, poi scegli la password nuova.</p>
+      </td></tr>
+
+      <tr><td style="padding:20px 26px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#2C3644;border:1px solid #566173;border-radius:14px;">
+          <tr><td align="center" style="padding:20px 10px;">
+            <span style="font-family:'Courier New',Consolas,monospace;font-size:34px;font-weight:800;letter-spacing:9px;color:#C9F94E;">{{ .Token }}</span>
+          </td></tr>
+        </table>
+        <p style="margin:10px 0 0;font-size:12.5px;line-height:1.5;color:#9BA7B6;">Scade tra un'ora. Se non sei stato tu a chiederlo, ignora questa email: la password resta quella di prima.</p>
+      </td></tr>
+
+      <tr><td style="padding:18px 26px 26px;"></td></tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-size:11.5px;color:#7B8794;">Carico · il tuo allenamento, i tuoi dati</p>
+  </td></tr>
+</table>

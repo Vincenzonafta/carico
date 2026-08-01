@@ -3938,9 +3938,12 @@ function AuthForm() {
           value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
       )}
       {mode === 'otp' && (
-        <input className="otpin num" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+        // Supabase permette codici da 6 a 10 cifre (impostazione del progetto): accettiamoli
+        // tutti invece di tagliare a 6, e stringiamo il testo quando il codice è lungo.
+        <input className="otpin num" inputMode="numeric" autoComplete="one-time-code" maxLength={10}
           placeholder="000000" value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          style={code.length > 7 ? { fontSize: 24, letterSpacing: '.2em', paddingLeft: 12 } : undefined}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
           onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
       )}
 

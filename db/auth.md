@@ -15,6 +15,14 @@ sempre, va solo aggiunto al testo dell'email. Sono due modifiche nel pannello, u
 ## 2. Metti il codice nelle email
 **Authentication → Emails → Templates**
 
+> 📄 I template già pronti, con la grafica di Carico, sono in **`db/email-templates.html`**:
+> copia il primo blocco in *Confirm signup* e il secondo in *Reset password*.
+> Sotto la versione minima, se preferisci partire da lì.
+
+⚠️ **Lunghezza del codice**: di default è di 6 cifre, ma si può cambiare in
+*Authentication → Sign In / Providers → Email → **Email OTP Length*** (6–10). L'app accetta
+qualsiasi lunghezza da 6 a 10, quindi non devi toccarla — ma se vuoi il classico 6, è lì.
+
 Nel template **Confirm signup** aggiungi il codice (puoi lasciare anche il link):
 
 ```html
