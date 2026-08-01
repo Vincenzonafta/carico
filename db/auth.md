@@ -83,6 +83,20 @@ pensato per invii di massa — ma per i codici di conferma di un'app tua è perf
 **Non serve un account nuovo**: la password per le app si crea su un account Google che hai
 già. È legata all'account, non all'app, e puoi generarne quante ne vuoi.
 
+#### Far comparire un altro indirizzo al posto della tua Gmail
+Gmail può spedire "come" un altro indirizzo che possiedi (es. quello Outlook creato apposta),
+senza pagare nulla:
+
+1. In Gmail: **Impostazioni → Account e importazione → Invia messaggi come → Aggiungi un
+   altro indirizzo email**. Metti l'indirizzo Outlook e lascia spuntato *Trattalo come alias*.
+2. Google manda un codice **su quell'indirizzo**: aprilo e confermalo.
+3. In Supabase, nelle impostazioni SMTP, come **Sender email** metti l'indirizzo Outlook,
+   lasciando Host/Username/Password di Gmail.
+
+Le email partono dai server di Google ma nel campo mittente si legge l'indirizzo Outlook.
+Qualche client scrupoloso può mostrare un "via gmail.com" accanto al nome: se dà fastidio,
+l'unica alternativa è un dominio tuo.
+
 ### Outlook / Hotmail: non va
 Microsoft ha chiuso l'accesso SMTP con utente e password sugli account personali: ora
 pretende OAuth2, che Supabase non parla. Un `smtp-mail.outlook.com` con la password
