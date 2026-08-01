@@ -735,6 +735,14 @@ body:has(input:focus:not([type=range]), textarea:focus) .focusbar { display:none
 .linklike:active { color:var(--chalk); }
 .linklike.skip { color:var(--mut2); margin-top:20px; font-size:14px; }
 .authmsg { margin-top:16px; text-align:center; font-size:13.5px; line-height:1.45; color:var(--amber); }
+/* separatore "oppure": due righe e la parola in mezzo */
+.oppure { display:flex; align-items:center; gap:12px; margin:18px 0 12px;
+  font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mut2); }
+.oppure::before, .oppure::after { content:''; flex:1; height:1px; background:var(--hair); }
+/* accesso con Google/Apple: neutro, l'identità la dà il logo */
+.oauthbtn { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:9px;
+  background:var(--surf2); color:var(--chalk); border:1px solid var(--hair); font-size:15px; font-weight:700; }
+.oauthbtn svg { flex:none; }
 /* conferma (codice inviato) vs errore: colori diversi, così si capisce al volo cos'è successo */
 .authmsg.okmsg { color:var(--lime); }
 .authmsg.hint2 { color:var(--mut2); font-size:12px; margin-top:10px; }

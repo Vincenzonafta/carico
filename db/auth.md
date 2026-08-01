@@ -52,6 +52,41 @@ possono convivere.
 
 Senza questo il link di conferma rimanda a un indirizzo sbagliato.
 
+## 3-bis. Accesso con Google e con Apple
+
+I pulsanti ci sono già nell'app: restano inerti finché il provider non è acceso in Supabase.
+**Authentication → Sign In / Providers**
+
+### Google — gratis, ~15 minuti
+1. [console.cloud.google.com](https://console.cloud.google.com) → crea un progetto (o riusane uno).
+2. **APIs & Services → OAuth consent screen**: tipo *External*, nome app `Carico`, email di
+   supporto la tua. Salva. Finché resta in *Testing* possono entrare solo gli indirizzi che
+   aggiungi in *Test users*: per aprirlo a tutti premi **Publish app**.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**
+   - Tipo: **Web application**
+   - *Authorized redirect URIs*: **`https://<ref-progetto>.supabase.co/auth/v1/callback`**
+     (il `<ref-progetto>` lo leggi nell'URL della dashboard Supabase)
+4. Copia **Client ID** e **Client secret** in Supabase → *Providers → Google* → abilita → Save.
+
+⚠️ L'errore più comune è il *redirect URI*: deve essere quello di **Supabase**, non quello
+della tua app. È Supabase che riceve la risposta di Google e poi rimanda a te.
+
+### Apple — richiede l'abbonamento da sviluppatore (99 $/anno)
+Senza **Apple Developer Program** non si può fare: Apple non rilascia credenziali OAuth agli
+account gratuiti. Se decidi di prenderlo, in sintesi: crei un **App ID**, poi un **Services
+ID** (è quello che fa da client OAuth), un **Sign in with Apple Key** (.p8), e in Supabase
+incolli Services ID, Team ID, Key ID e il contenuto del .p8. Il redirect è lo stesso di sopra.
+
+> Consiglio: parti da **Google**, che copre quasi tutti e non costa nulla. Apple diventa
+> obbligatorio solo il giorno in cui pubblichi sull'App Store un'app che offre altri login
+> social — regola di Apple, non nostra.
+
+### Da sapere sulla PWA installata (iOS)
+Su iPhone, con l'app aggiunta alla Home, il giro OAuth **esce su Safari** e torna dentro:
+può capitare che l'ultimo passo si apra nel browser invece che nell'app. È un limite noto
+delle PWA in standalone. L'accesso con email e codice non ha questo problema: teniamolo come
+strada principale finché l'app non diventa nativa.
+
 ## 4. SMTP tuo (serve appena l'app la usa qualcun altro)
 
 Il servizio email incluso di Supabase manda **poche email all'ora**, è dichiarato "solo per
