@@ -3696,11 +3696,32 @@ function Coach({ s, onChat }: { s: State; onChat: (c: ChatMsg[]) => void }) {
   )
 }
 
+// Voce di menu grande: titolo su pastiglia in rilievo e icona sfumata a destra.
+function MenuCard({ titolo, sotto, paths, onClick }: { titolo: string; sotto: string; paths: string[]; onClick: () => void }) {
+  return (
+    <div className="mcard" onClick={onClick}>
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <b>{titolo}</b>
+        <div className="msub">{sotto}</div>
+      </div>
+      <svg className="mbig" viewBox="0 0 24 24" aria-hidden="true">{paths.map((d, i) => <path key={i} d={d} />)}</svg>
+      <span className="chev" style={{ marginLeft: 'auto', zIndex: 1 }}>›</span>
+    </div>
+  )
+}
+
+type SezImp = 'allenamento' | 'nutrizione' | 'ia' | 'account' | 'dati'
+
 function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
   const first = s.body.length ? s.body[0].kg : cur
   const [w, setW] = useState('')
-  const [sub, setSub] = useState<'profilo' | 'set'>('profilo')
+  const [sub, setSub] = useState<SezImp | null>(null)
+  const [mail, setMail] = useState<string | null>(null)
+  useEffect(() => {
+    if (!supa) return
+    supa.auth.getSession().then(({ data }) => setMail(data.session?.user.email ?? null))
+  }, [])
   useTop(sub)
   const goalCur = bestE1rm(s.log, s.goal.ex)
   const gpct = Math.min(100, Math.round((goalCur / s.goal.targetKg) * 100))
@@ -3713,40 +3734,43 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
     setW('')
   }
 
-  const r = readiness(s.checkin)
-  const rLabel = r >= 80 ? 'PRONTO' : r >= 65 ? 'OK' : 'SCARICA'
-  const rCol = r >= 80 ? 'var(--lime)' : r >= 65 ? 'var(--amber)' : 'var(--coral)'
-  const ciDone = s.checkin.date === today()
-
+  // readiness e medie alimentari NON stanno più qui: erano copie di Home e Cibo
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
   const since = weekAgo.toISOString().slice(0, 10)
   const weekSessions = new Set(s.log.filter((l) => l.date > since).map((l) => l.date)).size
 
-  const fdays = Array.from({ length: 7 }, (_, i) => { const t = new Date(); t.setDate(t.getDate() - i); return t.toISOString().slice(0, 10) })
-  const flogged = fdays.filter((d) => s.meals.some((m) => m.date === d))
-  const favg = (pick: (n: ReturnType<typeof nutritionToday>) => number) =>
-    flogged.length ? Math.round(flogged.reduce((a, d) => a + pick(nutritionToday(s.meals, d)), 0) / flogged.length) : 0
-  const ftot = nutritionToday(s.meals, today())
+  // Sotto-schermata delle impostazioni: header col ‹ e solo quella sezione
+  if (sub) {
+    const titoli: Record<SezImp, string> = {
+      allenamento: 'Allenamento', nutrizione: 'Nutrizione', ia: 'Coach IA',
+      account: 'Account e cloud', dati: 'Dati e app',
+    }
+    return (
+      <>
+        <div className="bc" style={{ marginTop: 18 }}>
+          <button className="back" onClick={() => setSub(null)}>‹</button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="crumb">Impostazioni</div>
+            <div className="bt1">{titoli[sub]}</div>
+          </div>
+        </div>
+        <Impostazioni s={s} setS={setS} sez={sub} />
+      </>
+    )
+  }
+
+  const nome = s.settings.nome?.trim()
+  const iniziali = (nome || mail || 'C').slice(0, 2).toUpperCase()
 
   return (
     <>
-      <div className="seg" style={{ marginTop: 4 }}>
-        {([['profilo', 'Profilo'], ['set', '']] as const).map(([k, l]) => (
-          <button key={k} className={'sg' + (sub === k ? ' on' : '')} onClick={() => setSub(k)}>
-            {k === 'set' ? <Gear size={18} /> : l}
-          </button>
-        ))}
-      </div>
-
-      {sub === 'set' && <Impostazioni s={s} setS={setS} />}
-      {sub !== 'profilo' ? null : (<>
-      <h2>Stato di oggi</h2>
-      <div className="card ready">
-        <Ring v={r} color={rCol} />
-        <div style={{ minWidth: 0 }}>
-          <div className="rl" style={{ color: rCol }}>{rLabel} · READINESS</div>
-          <div className="rh">{ciDone ? 'Check-in fatto oggi' : 'Check-in da fare'}</div>
-          <div className="rd num">Sonno {s.checkin.sonno} · Energia {s.checkin.energia} · DOMS {s.checkin.doms} · Stress {s.checkin.stress}</div>
+      {/* IDENTITÀ: prima non c'era niente di personale qui, era una seconda pagina di statistiche */}
+      <div className="card idcard">
+        <div className="avat">{iniziali}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <input className="nomein" placeholder="Il tuo nome" value={s.settings.nome ?? ''}
+            onChange={(e) => setS({ ...s, settings: { ...s.settings, nome: e.target.value || undefined } })} />
+          <div className="meta" style={{ marginTop: 3 }}>{mail ?? 'solo su questo dispositivo'}</div>
         </div>
       </div>
 
@@ -3765,16 +3789,6 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
           <div className="tile"><div className="l">Questa settimana</div><div className="v num">{weekSessions}</div></div>
           <div className="tile"><div className="l">Sollevato</div><div className="v num">{fmt(ton / 1000)} <span className="sm mut">t</span></div></div>
           <div className="tile"><div className="l">{s.goal.ex}</div><div className="v num">{fmt(goalCur)}<span className="sm mut">/{s.goal.targetKg} · {gpct}%</span></div></div>
-        </div>
-      </div>
-
-      <h2>Alimentazione</h2>
-      <div className="card">
-        <div className="tiles">
-          <div className="tile"><div className="l">Kcal oggi</div><div className="v num">{Math.round(ftot.kcal)} <span className="sm mut">/ {s.target.kcal}</span></div></div>
-          <div className="tile"><div className="l">Proteine oggi</div><div className="v num">{Math.round(ftot.protein)} <span className="sm mut">/ {s.target.protein}g</span></div></div>
-          <div className="tile"><div className="l">Media kcal 7gg</div><div className="v num">{favg((n) => n.kcal)}</div></div>
-          <div className="tile"><div className="l">Media prot. 7gg</div><div className="v num">{favg((n) => n.protein)} <span className="sm mut">g</span></div></div>
         </div>
       </div>
 
@@ -3799,7 +3813,19 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
           </div>
         ))}
       </div>
-      </>)}
+
+      {/* Impostazioni: un menu, non sei blocchi tutti aperti insieme */}
+      <h2>Impostazioni</h2>
+      <MenuCard titolo="Allenamento" sotto="Suono, vibrazione, obiettivo" onClick={() => setSub('allenamento')}
+        paths={['M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12']} />
+      <MenuCard titolo="Nutrizione" sotto="Calorie e proteine da raggiungere" onClick={() => setSub('nutrizione')}
+        paths={['M6 3v8', 'M9 3v8', 'M7.5 11v10', 'M15 3c-1 2-1 6 1 7v11']} />
+      <MenuCard titolo="Coach IA" sotto="La tua chiave per la chat e i consigli" onClick={() => setSub('ia')}
+        paths={['M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z']} />
+      <MenuCard titolo="Account e cloud" sotto={mail ?? 'non connesso'} onClick={() => setSub('account')}
+        paths={['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M4 21c0-4 4-6 8-6s8 2 8 6']} />
+      <MenuCard titolo="Dati e app" sotto="Backup, ripristino, installazione" onClick={() => setSub('dati')}
+        paths={['M12 3v12', 'M8 11l4 4 4-4', 'M4 21h16']} />
     </>
   )
 }
@@ -4074,7 +4100,9 @@ function Cloud() {
   return <div className="card"><p className="sm mut" style={{ margin: 0 }}>Non connesso.</p></div>
 }
 
-function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
+// `sez` = quale gruppo mostrare: dal Profilo si entra in una sezione per volta, invece di
+// avere sei blocchi aperti tutti insieme.
+function Impostazioni({ s, setS, sez }: { s: State; setS: (u: State) => void; sez: SezImp }) {
   const lib = libreriaEsercizi(s)
   const setOpt = (k: 'sound' | 'vibrate', v: boolean) => setS({ ...s, settings: { ...s.settings, [k]: v } })
   const setTarget = (k: 'kcal' | 'protein', v: number) => setS({ ...s, target: { ...s.target, [k]: v } })
@@ -4120,46 +4148,70 @@ function Impostazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
     if (!cloud) return toast('Niente da caricare')
     setS(statoDaCloud(cloud)); toast('Dati caricati dal cloud ✓')
   }
-  return (
+  if (sez === 'allenamento') return (
     <>
-      <h2>Allenamento</h2>
       <div className="card">
         <div className="mrow"><span>Suono a fine recupero</span><Tog on={s.settings.sound} set={(v) => setOpt('sound', v)} /></div>
         <div className="mrow"><span>Vibrazione a fine recupero</span><Tog on={s.settings.vibrate} set={(v) => setOpt('vibrate', v)} /></div>
       </div>
+      <p className="hint">Su iPhone la vibrazione via web non è disponibile: arriverà con l'app installabile.</p>
       <h2>Obiettivo attivo</h2>
       <div className="card">
         <div className="mrow"><span>{s.goal.ex}</span><b className="num">{s.goal.targetKg} kg</b></div>
         <button className="ghost" style={{ marginTop: 10 }} onClick={editGoal}>Cambia obiettivo</button>
       </div>
-      <h2>Target nutrizionale</h2>
+    </>
+  )
+
+  if (sez === 'nutrizione') return (
+    <>
       <div className="card">
         <div className="mrow"><span>Calorie (kcal)</span>
           <input className="numedit" type="number" inputMode="numeric" value={s.target.kcal} onChange={(e) => setTarget('kcal', +e.target.value)} /></div>
         <div className="mrow"><span>Proteine (g)</span>
           <input className="numedit" type="number" inputMode="numeric" value={s.target.protein} onChange={(e) => setTarget('protein', +e.target.value)} /></div>
       </div>
-      <h2>App</h2>
+      <p className="hint">Sono i target giornalieri: li vedi nella home e nella tab Cibo.</p>
+    </>
+  )
+
+  if (sez === 'ia') return (
+    <>
+      <div className="card">
+        <p className="sm mut" style={{ marginTop: 0, lineHeight: 1.55 }}>La tua chiave API Gemini, gratuita: <b>aistudio.google.com</b> → <i>Get API key</i>. Serve alla chat col coach, ai consigli sul peso e all'import delle schede da PDF.</p>
+        <input type="password" placeholder="Incolla qui la chiave API" autoComplete="off"
+          value={s.settings.geminiKey ?? ''}
+          onChange={(e) => setS({ ...s, settings: { ...s.settings, geminiKey: e.target.value.trim() || undefined } })} />
+        {s.settings.geminiKey && <p className="sm" style={{ marginBottom: 0, color: 'var(--lime)' }}>Chiave salvata — sincronizzata col tuo account</p>}
+      </div>
+    </>
+  )
+
+  if (sez === 'account') return (
+    <>
+      <Cloud />
+      <h2>Ripristino</h2>
+      <div className="card">
+        <button className="ghost" onClick={restoreCloud}>Carica i dati dal cloud</button>
+        <p className="hint">Sostituisce i dati di questo dispositivo con quelli salvati nel tuo account. Serve su un telefono nuovo.</p>
+      </div>
+    </>
+  )
+
+  return (
+    <>
       <div className="card">
         <button className="ghost" onClick={doInstall}>⤓ Installa sulla schermata home</button>
         <button className="ghost" style={{ marginTop: 8 }} onClick={exportData}>Esporta dati (backup)</button>
         <label className="ghost filebtn">Importa backup
           <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
         </label>
-        <button className="ghost" style={{ marginTop: 8 }} onClick={restoreCloud}>Carica dati dal cloud</button>
-        <button className="ghost" style={{ marginTop: 8, color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
       </div>
-      <h2>Coach IA</h2>
+      <p className="hint">Schede e pasti vivono su questo dispositivo: un backup ogni tanto non fa male. Le serie vanno anche nel cloud quando sei connesso.</p>
+      <h2>Zona pericolosa</h2>
       <div className="card">
-        <p className="sm mut" style={{ marginTop: 0, lineHeight: 1.55 }}>La tua chiave API Gemini (gratis da <b>aistudio.google.com</b> → Get API key). Attiva la chat nella tab Coach.</p>
-        <input type="password" placeholder="Incolla qui la chiave API" autoComplete="off"
-          value={s.settings.geminiKey ?? ''}
-          onChange={(e) => setS({ ...s, settings: { ...s.settings, geminiKey: e.target.value.trim() || undefined } })} />
-        {s.settings.geminiKey && <p className="sm mut" style={{ marginBottom: 0 }}>Chiave salvata ✓ — sincronizzata col tuo account</p>}
+        <button className="ghost" style={{ color: 'var(--coral)' }} onClick={reset}>Azzera tutti i dati</button>
       </div>
-      <h2>Cloud</h2>
-      <Cloud />
-      <p className="hint">Schede e pasti vivono su questo dispositivo (esporta un backup ogni tanto); le serie vanno anche nel cloud quando sei connesso.</p>
     </>
   )
 }
