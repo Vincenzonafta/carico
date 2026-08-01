@@ -3833,6 +3833,8 @@ function AuthForm() {
   const [mode, setMode] = useState<AuthMode>('in')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('') // conferma, solo dove la password la scegli
+  const [showPw, setShowPw] = useState(false)
   const [code, setCode] = useState('')
   // che tipo di codice sto verificando: conferma registrazione o recupero password
   const [otpKind, setOtpKind] = useState<'signup' | 'recovery'>('signup')
@@ -3843,7 +3845,7 @@ function AuthForm() {
   const sb = supa
   const em = email.trim()
   const pulisci = () => { setMsg(null); setOk(null) }
-  const vai = (m: AuthMode) => { pulisci(); setCode(''); setMode(m) }
+  const vai = (m: AuthMode) => { pulisci(); setCode(''); setPw2(''); setMode(m) }
 
   const registra = async () => {
     const r = await sb.auth.signUp({ email: em, password: pw })
@@ -3909,6 +3911,7 @@ function AuthForm() {
     // ogni schermata ha i suoi campi obbligatori
     if (mode !== 'otp' && !em) return setMsg('Scrivi la tua email.')
     if ((mode === 'in' || mode === 'up' || mode === 'newpw') && pw.length < 6) return setMsg('La password deve avere almeno 6 caratteri.')
+    if ((mode === 'up' || mode === 'newpw') && pw !== pw2) return setMsg('Le due password non coincidono.')
     setBusy(true)
     try {
       if (mode === 'in') await accedi()
@@ -3932,19 +3935,55 @@ function AuthForm() {
   const etichetta = mode === 'in' ? 'Entra' : mode === 'up' ? 'Crea account'
     : mode === 'otp' ? 'Conferma' : mode === 'forgot' ? 'Mandami il codice' : 'Salva la password'
 
+  // Ogni schermata dice dove sei e cosa succede dopo, invece di un titolo generico per tutte
+  const testi: Record<AuthMode, [string, string]> = {
+    in: ['Bentornato', 'Accedi per ritrovare schede, carichi e progressi.'],
+    up: ['Crea il tuo account', 'Bastano un\'email e una password: i dati restano tuoi.'],
+    otp: ['Controlla la posta', `Abbiamo mandato un codice a ${em || 'la tua email'}. Scrivilo qui sotto.`],
+    forgot: ['Password dimenticata', 'Scrivi la tua email: ti mando un codice per reimpostarla.'],
+    newpw: ['Nuova password', 'Scegline una che ricordi: almeno 6 caratteri.'],
+  }
+  const [titolo, sotto] = testi[mode]
+  const pwUguali = pw2.length > 0 && pw === pw2
+
+  // campo password con l'occhio per mostrarla: si sbaglia molto meno a digitarla
+  const campoPw = (val: string, set: (v: string) => void, ph: string, auto: string) => (
+    <div className="pwfield">
+      <input type={showPw ? 'text' : 'password'} placeholder={ph} autoComplete={auto}
+        value={val} onChange={(e) => set(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
+      <button className="pweye" type="button" tabIndex={-1} title={showPw ? 'Nascondi' : 'Mostra'}
+        onClick={() => setShowPw(!showPw)}>
+        <svg viewBox="0 0 24 24" className="misvg"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+          {!showPw && <path d="M4 20L20 4" />}</svg>
+      </button>
+    </div>
+  )
+
   return (
     <>
+      <div className="authhead">
+        <h1>{titolo}</h1>
+        <p>{sotto}</p>
+      </div>
+
       {/* l'email si mostra solo dove serve scriverla: nella verifica è già decisa */}
       {mode !== 'otp' && mode !== 'newpw' && (
-        <input type="email" placeholder="email" autoComplete="email" inputMode="email"
-          value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input type="email" placeholder="Email" autoComplete="email" inputMode="email"
+          value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
       )}
       {(mode === 'in' || mode === 'up' || mode === 'newpw') && (
-        <input type="password" placeholder={mode === 'newpw' ? 'nuova password (min 6)' : 'password (min 6)'}
-          style={{ marginTop: mode === 'newpw' ? 0 : 8 }}
-          autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-          value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') go() }} />
+        <div style={{ marginTop: mode === 'newpw' ? 0 : 8 }}>
+          {campoPw(pw, setPw, mode === 'newpw' ? 'Nuova password' : 'Password', mode === 'in' ? 'current-password' : 'new-password')}
+        </div>
       )}
+      {/* conferma solo dove la password la stai SCEGLIENDO: all'accesso sarebbe un fastidio */}
+      {(mode === 'up' || mode === 'newpw') && (<>
+        <div style={{ marginTop: 8 }}>{campoPw(pw2, setPw2, 'Ripeti la password', 'new-password')}</div>
+        <div className="pwcheck">
+          <span className={pw.length >= 6 ? 'ok' : ''}>{pw.length >= 6 ? '✓' : '·'} almeno 6 caratteri</span>
+          <span className={pwUguali ? 'ok' : ''}>{pwUguali ? '✓' : '·'} le due coincidono</span>
+        </div>
+      </>)}
       {mode === 'otp' && (
         // Supabase permette codici da 6 a 10 cifre (impostazione del progetto): accettiamoli
         // tutti invece di tagliare a 6, e stringiamo il testo quando il codice è lungo.
@@ -3969,11 +4008,14 @@ function AuthForm() {
           </svg>
           Continua con Google
         </button>
-        <button className="oauthbtn" disabled={busy} onClick={() => oauth('apple')}>
+        {/* Apple richiede l'abbonamento sviluppatore: meglio dirlo che dare un pulsante che
+            fallisce. Resta visibile perché è una funzione prevista, non abbandonata. */}
+        <button className="oauthbtn soon" onClick={() => setMsg('Accesso con Apple non ancora disponibile: usa Google, oppure email e password.')}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
             <path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.9-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.89 2.65 3.23 2.6 1.3-.05 1.79-.84 3.36-.84s2.01.84 3.38.81c1.4-.02 2.28-1.27 3.13-2.53.99-1.45 1.4-2.85 1.42-2.92-.03-.01-2.72-1.04-2.75-4.12zM14.6 4.7c.71-.87 1.19-2.07 1.06-3.27-1.02.04-2.26.68-3 1.54-.66.77-1.24 2-1.08 3.18 1.14.09 2.3-.58 3.02-1.45z" />
           </svg>
           Continua con Apple
+          <span className="soontag">presto</span>
         </button>
       </>)}
 
@@ -4001,7 +4043,6 @@ function AuthGate() {
     <div className="authgate">
       <div className="authbox">
         <div className="authbrand"><span className="mark">CARICO</span><span className="dot" /></div>
-        <p className="authtag">Accedi o crea un account per iniziare.</p>
         <AuthForm />
       </div>
     </div>
