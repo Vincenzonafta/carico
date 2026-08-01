@@ -80,6 +80,15 @@ In Supabase → **Project Settings → Authentication → SMTP Settings**:
 Da sapere: il destinatario vedrà il tuo indirizzo personale come mittente, e Gmail non è
 pensato per invii di massa — ma per i codici di conferma di un'app tua è perfetto e gratis.
 
+**Non serve un account nuovo**: la password per le app si crea su un account Google che hai
+già. È legata all'account, non all'app, e puoi generarne quante ne vuoi.
+
+### Outlook / Hotmail: non va
+Microsoft ha chiuso l'accesso SMTP con utente e password sugli account personali: ora
+pretende OAuth2, che Supabase non parla. Un `smtp-mail.outlook.com` con la password
+dell'account (o una password per le app) viene **rifiutato al login**. Se hai solo un
+indirizzo Outlook, usalo come mittente dentro Brevo invece che come server SMTP.
+
 ### Brevo, passo per passo
 1. Crea l'account su brevo.com.
 2. **Senders, Domains & Dedicated IPs → Senders → Add a sender**: metti il tuo indirizzo
