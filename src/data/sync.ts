@@ -7,7 +7,11 @@ import { supa } from './client'
 // u = utente a cui appartiene l'operazione, timbrato quando entra in coda. Senza, una coda
 // creata da un account partirebbe con l'utente_id di CHI È LOGGATO ADESSO, scrivendo i dati
 // di uno dentro l'account di un altro.
-type Op = { u?: string } & (
+// n = tentativi falliti. Un errore del DB non significa "dato da buttare": la riga utente o
+// la sessione a cui si aggancia possono non esserci ANCORA. Si riprova, e solo dopo N volte
+// si molla — prima bastava un errore per perdere una serie per sempre.
+const MAX_TENT = 6
+type Op = { u?: string; n?: number } & (
   | { op: 'ins'; t: string; row: Record<string, unknown> }
   | { op: 'ups'; t: string; row: Record<string, unknown>; onConflict: string }
   | { op: 'upd'; t: string; id: string; patch: Record<string, unknown> }
@@ -29,7 +33,10 @@ let logged = false
 export const cloudState = (): 'off' | 'anon' | 'on' => !supa ? 'off' : logged ? 'on' : 'anon'
 
 let flushing = false
-let utenteOk = false // il profilo utente esiste nel cloud (è la FK di tutte le tabelle)
+// PER QUALE utente ho già verificato il profilo. Prima era un semplice sì/no: cambiando
+// account restava "sì" del precedente, il profilo del nuovo non veniva creato e ogni suo
+// inserimento falliva per chiave mancante.
+let utenteOkPer: string | null = null
 export async function flush() {
   if (!supa || flushing) return
   flushing = true
@@ -37,10 +44,10 @@ export async function flush() {
     const sess = (await supa.auth.getSession()).data.session
     const uid = sess?.user.id
     if (!uid) return
-    if (!utenteOk) { // il profilo DEVE esistere prima di ogni insert, o il vincolo FK rifiuta e il dato va perso
+    if (utenteOkPer !== uid) { // il profilo DEVE esistere prima di ogni insert, o il vincolo FK rifiuta
       const r = await supa.from('utente').upsert({ id: uid, nome: sess!.user.email })
       if (r.error) { console.warn('[sync] utente', r.error.message); return } // riprovo al prossimo flush
-      utenteOk = true
+      utenteOkPer = uid
     }
     // Spedisco SOLO le operazioni di questo utente. Quelle di un altro account restano in
     // coda intatte e partiranno quando rientra lui: scartarle perderebbe dati suoi.
@@ -57,9 +64,17 @@ export async function flush() {
         if (!r.error.code) { // nessun codice = probabile assenza di rete: tengo la coda e riprovo dopo
           console.warn('[sync] rete?', o.t, r.error.message); break
         }
-        if (r.error.code !== '23505') // errore lato DB permanente per questa op (es. vincolo): scarto e proseguo, così non blocca il resto
-          console.warn('[sync] scartata', o.t, r.error.code, r.error.message)
-        // 23505 = già inserita (flush doppio): ok, proseguo
+        // 23505 = già inserita (flush doppio): è a posto, la tolgo dalla coda.
+        if (r.error.code !== '23505') {
+          // Ogni altro errore può essere temporaneo (profilo utente o sessione non ancora
+          // create): la tengo e riprovo. Solo dopo MAX_TENT la mollo, senza perdere il resto.
+          o.n = (o.n ?? 0) + 1
+          if (o.n < MAX_TENT) {
+            console.warn('[sync] riprovo', o.t, r.error.code, r.error.message, `(${o.n}/${MAX_TENT})`)
+            save(); i++; continue
+          }
+          console.warn('[sync] scartata dopo', o.n, 'tentativi:', o.t, r.error.code, r.error.message)
+        }
       }
       q.splice(i, 1); save()
     }
@@ -72,7 +87,6 @@ void supa?.auth.getSession().then(({ data }) => { curUid = data.session?.user.id
 supa?.auth.onAuthStateChange((_e, sess) => {
   logged = !!sess?.user
   curUid = sess?.user.id ?? null
-  if (!sess?.user) utenteOk = false // al logout il prossimo login riverifica il profilo
   if (sess?.user) void flush() // flush garantisce il profilo utente prima di spedire la coda
 })
 
