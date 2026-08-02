@@ -26,6 +26,9 @@ export type MealType = 'colazione' | 'pranzo' | 'cena' | 'spuntino'
 export type Meal = { date: string; type: MealType; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }
 export type Food = { name: string; cat: string; kcal: number; protein: number; carbs: number; fat: number } // valori per 100 g
 export type BodyLog = { date: string; kg: number }
+// Circonferenze e pieghe: una riga per (data, punto misurato), in cm.
+export type Misura = { date: string; punto: string; cm: number }
+export const PUNTI_MISURA = ['Braccio', 'Petto', 'Vita', 'Fianchi', 'Coscia', 'Polpaccio', 'Collo', 'Spalle']
 export type Goal = { ex: string; targetKg: number }
 export type Water = { date: string; ml: number }
 export type Exercise = { name: string; muscle: string }
@@ -51,6 +54,7 @@ export type State = {
   // durata dell'allenamento in SECONDI per data. Salvata a "Finito" e correggibile dal
   // calendario: il cronometro si azzera al ricarico dell'app e usciva sbagliata.
   durate: Record<string, number>
+  misure: Misura[]
   // Copia di lavoro del giorno in allenamento: l'allenamento è una COPIA della scheda, così
   // aggiungere/togliere serie o cambiare esercizio in corsa NON tocca la scheda originale.
   // Legata a (data, scheda, giorno): se non combaciano si riparte dal template. Nasce alla
@@ -676,7 +680,7 @@ if (import.meta.env.DEV) {
 export function emptyState(): State {
   return {
     schede: [], activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {}, misure: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [], log: [],
     meals: [], customFoods: [],
@@ -707,7 +711,7 @@ export function seed(): State {
       ],
     }],
     activeScheda: 0, activeDay: 0,
-    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {},
+    customExercises: [], extras: [], sessionEx: [], exVideo: {}, exDesc: {}, refMax: {}, chat: [], durate: {}, misure: [],
     checkin: { date: '', sonno: 7, energia: 7, doms: 3, stress: 3, ore: 7.5 },
     checkins: [
       { date: d(16), sonno: 8, energia: 8, doms: 2, stress: 2 },

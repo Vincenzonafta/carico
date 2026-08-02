@@ -4,17 +4,23 @@
 // senza segnale non si perde niente: la coda parte al rientro.
 import { supa } from './client'
 
-type Op =
+// u = utente a cui appartiene l'operazione, timbrato quando entra in coda. Senza, una coda
+// creata da un account partirebbe con l'utente_id di CHI È LOGGATO ADESSO, scrivendo i dati
+// di uno dentro l'account di un altro.
+type Op = { u?: string } & (
   | { op: 'ins'; t: string; row: Record<string, unknown> }
   | { op: 'ups'; t: string; row: Record<string, unknown>; onConflict: string }
   | { op: 'upd'; t: string; id: string; patch: Record<string, unknown> }
   | { op: 'del'; t: string; id: string }
   | { op: 'delday'; t: string; date: string }
+)
 
 const QK = 'carico-syncq'
 const q: Op[] = JSON.parse(localStorage.getItem(QK) ?? '[]')
 const save = () => localStorage.setItem(QK, JSON.stringify(q))
-const enq = (o: Op) => { q.push(o); save(); void flush() }
+let curUid: string | null = null // ultimo utente conosciuto, per timbrare la coda
+export const utenteCorrente = () => curUid
+const enq = (o: Op) => { q.push({ ...o, u: curUid ?? undefined }); save(); void flush() }
 
 export const pending = () => q.length
 
@@ -36,8 +42,12 @@ export async function flush() {
       if (r.error) { console.warn('[sync] utente', r.error.message); return } // riprovo al prossimo flush
       utenteOk = true
     }
-    while (q.length) {
-      const o = q[0]
+    // Spedisco SOLO le operazioni di questo utente. Quelle di un altro account restano in
+    // coda intatte e partiranno quando rientra lui: scartarle perderebbe dati suoi.
+    let i = 0
+    while (i < q.length) {
+      const o = q[i]
+      if (o.u && o.u !== uid) { i++; continue }
       const r = o.op === 'ins' ? await supa.from(o.t).insert({ utente_id: uid, ...o.row })
         : o.op === 'ups' ? await supa.from(o.t).upsert({ utente_id: uid, ...o.row }, { onConflict: o.onConflict })
         : o.op === 'upd' ? await supa.from(o.t).update(o.patch).eq('id', o.id)
@@ -51,14 +61,17 @@ export async function flush() {
           console.warn('[sync] scartata', o.t, r.error.code, r.error.message)
         // 23505 = già inserita (flush doppio): ok, proseguo
       }
-      q.shift(); save()
+      q.splice(i, 1); save()
     }
   } finally { flushing = false }
 }
 
 window.addEventListener('online', () => void flush())
+// curUid va tenuto aggiornato PRIMA di ogni enq: all'avvio e a ogni cambio di sessione
+void supa?.auth.getSession().then(({ data }) => { curUid = data.session?.user.id ?? null })
 supa?.auth.onAuthStateChange((_e, sess) => {
   logged = !!sess?.user
+  curUid = sess?.user.id ?? null
   if (!sess?.user) utenteOk = false // al logout il prossimo login riverifica il profilo
   if (sess?.user) void flush() // flush garantisce il profilo utente prima di spedire la coda
 })
@@ -161,7 +174,8 @@ export function configSalvata(st: Record<string, unknown>) {
   const dati = {
     schede: st.schede, activeScheda: st.activeScheda, activeDay: st.activeDay,
     customExercises: st.customExercises, extras: st.extras, sessionEx: st.sessionEx,
-    exVideo: st.exVideo, exDesc: st.exDesc, refMax: st.refMax, durate: st.durate, allenamento: st.allenamento, target: st.target,
+    exVideo: st.exVideo, exDesc: st.exDesc, refMax: st.refMax, durate: st.durate, allenamento: st.allenamento,
+    misure: st.misure, target: st.target,
     // chat troncata: il blob è uno snapshot, una conversazione lunga lo gonfierebbe senza motivo
     chat: Array.isArray(st.chat) ? st.chat.slice(-60) : [],
     mealPlan: st.mealPlan, goal: st.goal, settings: st.settings, customFoods: st.customFoods,

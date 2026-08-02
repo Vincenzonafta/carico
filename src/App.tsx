@@ -6,7 +6,7 @@ import {
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
-  curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda, libreriaEsercizi,
+  curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda, libreriaEsercizi, PUNTI_MISURA,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
   type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
   foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
@@ -82,6 +82,9 @@ const Dumb = () => (
 )
 
 const LS = 'carico-v1'
+// A CHI appartengono i dati locali. Senza, entrando con un altro account l'app trovava dati
+// "non freschi" e li spingeva nel cloud del nuovo utente, sovrascrivendo i suoi.
+const UIDK = 'carico-uid'
 let cloudNudged = false // un solo avviso di stato cloud per caricamento pagina
 const SALUTE_SHORTCUT = 'Carico' // nome ESATTO della Shortcut Apple che registra l'allenamento in Salute
 // data = giorno dell'allenamento (ISO). Senza, la Shortcut usa la data CORRENTE e registra
@@ -176,8 +179,15 @@ export default function App() {
         const cloud = await pullAll(uid)
         if (cancel || !cloud) return
         const hasCloud = !!cloud.dati || cloud.log.length > 0 || cloud.checkins.length > 0 || cloud.meals.length > 0 || cloud.body.length > 0 || cloud.water.length > 0
-        if (wasFresh && hasCloud) setS(statoDaCloud(cloud))
+        const prima = localStorage.getItem(UIDK)
+        if (prima && prima !== uid) {
+          // I dati locali sono di UN ALTRO account: non vanno spinti qui, sovrascriverebbero
+          // i suoi. Ne tengo una copia di sicurezza e riparto dai dati di questo utente.
+          try { localStorage.setItem(`carico-bk-${prima}`, JSON.stringify(sRef.current)) } catch { /* spazio finito: pazienza */ }
+          setS(hasCloud ? statoDaCloud(cloud) : emptyState())
+        } else if (wasFresh && hasCloud) setS(statoDaCloud(cloud))
         else configSalvata(sRef.current)
+        localStorage.setItem(UIDK, uid) // da qui in poi il locale appartiene a lui
       } catch (e) {
         console.warn('[hydrate]', e) // qualunque errore: NON lasciare l'app bloccata sullo splash
       } finally {
@@ -3710,7 +3720,59 @@ function MenuCard({ titolo, sotto, paths, onClick }: { titolo: string; sotto: st
   )
 }
 
-type SezImp = 'allenamento' | 'nutrizione' | 'ia' | 'account' | 'dati'
+type SezImp = 'allenamento' | 'nutrizione' | 'ia' | 'account' | 'dati' | 'misure'
+
+// Misurazioni corporee: base funzionante da ampliare (foto, pieghe, grafici per punto).
+function Misurazioni({ s, setS }: { s: State; setS: (u: State) => void }) {
+  const misure = s.misure ?? []
+  // ultima e penultima misura per punto: servono al valore e alla variazione
+  const perPunto = (p: string) => misure.filter((m) => m.punto === p).sort((a, b) => a.date.localeCompare(b.date))
+  const punti = [...new Set([...PUNTI_MISURA, ...misure.map((m) => m.punto)])]
+  const aggiungi = async (p: string) => {
+    const ultimi = perPunto(p)
+    const v = await promptDlg(p, [{ label: 'Centimetri', value: ultimi.length ? String(ultimi[ultimi.length - 1].cm) : '' }])
+    const cm = parseFloat((v?.[0] ?? '').replace(',', '.'))
+    if (!cm || cm <= 0) return
+    // una sola misura per punto al giorno: riscrivo quella di oggi invece di accumularne due
+    setS({ ...s, misure: [...misure.filter((m) => !(m.date === today() && m.punto === p)), { date: today(), punto: p, cm }] })
+    toast(`${p}: ${fmt(cm)} cm`)
+  }
+  return (
+    <>
+      <p className="hint" style={{ marginTop: 0 }}>Tocca un punto per segnare la misura di oggi. Misura sempre nelle stesse condizioni: a freddo, senza contrarre.</p>
+      <div className="card" style={{ padding: '4px 12px' }}>
+        {punti.map((p) => {
+          const st2 = perPunto(p)
+          const ultimo = st2[st2.length - 1]
+          const prec = st2[st2.length - 2]
+          const d = ultimo && prec ? ultimo.cm - prec.cm : 0
+          return (
+            <div className="set" key={p} style={{ cursor: 'pointer' }} onClick={() => aggiungi(p)}>
+              <b className="sm">{p}</b>
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8, flex: 'none' }}>
+                {d !== 0 && <span className="num sm" style={{ color: d > 0 ? 'var(--lime)' : 'var(--coral)' }}>{d > 0 ? '+' : ''}{fmt(d)}</span>}
+                <b className="num">{ultimo ? `${fmt(ultimo.cm)} cm` : '—'}</b>
+              </span>
+              <span className="chev">›</span>
+            </div>
+          )
+        })}
+      </div>
+      {misure.length > 0 && (<>
+        <h2>Storico</h2>
+        <div className="card" style={{ padding: '4px 12px' }}>
+          {[...new Set(misure.map((m) => m.date))].sort().reverse().slice(0, 12).map((d) => (
+            <div className="set" key={d}>
+              <span className="mono sm mut num" style={{ width: 56, flex: 'none' }}>{d.slice(5).split('-').reverse().join('/')}</span>
+              <span className="meta num" style={{ marginLeft: 'auto' }}>{misure.filter((m) => m.date === d).map((m) => `${m.punto} ${fmt(m.cm)}`).join(' · ')}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+      <p className="hint">In arrivo: foto di confronto, grafico per ogni punto e collegamento col peso.</p>
+    </>
+  )
+}
 
 function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   const cur = s.body.length ? s.body[s.body.length - 1].kg : 0
@@ -3743,18 +3805,18 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
   if (sub) {
     const titoli: Record<SezImp, string> = {
       allenamento: 'Allenamento', nutrizione: 'Nutrizione', ia: 'Coach IA',
-      account: 'Account e cloud', dati: 'Dati e app',
+      account: 'Account e cloud', dati: 'Dati e app', misure: 'Misurazioni',
     }
     return (
       <>
         <div className="bc" style={{ marginTop: 18 }}>
           <button className="back" onClick={() => setSub(null)}>‹</button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="crumb">Impostazioni</div>
+            <div className="crumb">{sub === 'misure' ? 'Il tuo corpo' : 'Impostazioni'}</div>
             <div className="bt1">{titoli[sub]}</div>
           </div>
         </div>
-        <Impostazioni s={s} setS={setS} sez={sub} />
+        {sub === 'misure' ? <Misurazioni s={s} setS={setS} /> : <Impostazioni s={s} setS={setS} sez={sub} />}
       </>
     )
   }
@@ -3813,6 +3875,11 @@ function Profilo({ s, setS }: { s: State; setS: (u: State) => void }) {
           </div>
         ))}
       </div>
+
+      <h2>Il tuo corpo</h2>
+      <MenuCard titolo="Misurazioni" sotto={(s.misure ?? []).length ? `${new Set((s.misure ?? []).map((m) => m.punto)).size} punti seguiti` : 'Circonferenze: braccio, vita, petto…'}
+        onClick={() => setSub('misure')}
+        paths={['M12 3v18', 'M8 6h8', 'M8 12h8', 'M8 18h8']} />
 
       {/* Impostazioni: un menu, non sei blocchi tutti aperti insieme */}
       <h2>Impostazioni</h2>
