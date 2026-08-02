@@ -167,6 +167,49 @@ export function pastiOggiAggiornati(
       kcal: m.kcal, prot: m.protein, carbo: m.carbs, grassi: m.fat, grammi: m.grams ?? null } })
 }
 
+// ═══ RIPRISTINO: rimanda nel cloud TUTTO lo stato locale ═══
+// Serve quando il cloud ha perso dei dati che in locale ci sono ancora (cancellazioni
+// sbagliate, account mescolati). Normalmente le serie salgono una alla volta quando le
+// segni: qui si ricostruisce l'intero storico.
+// È RIPETIBILE senza creare doppioni: le serie viaggiano col loro id (un secondo invio
+// viene rifiutato come già presente) e la sessione di ogni giorno ha un id derivato dalla
+// data, quindi è sempre la stessa.
+const sessioneDelGiorno = (date: string) => `5e551e00-0000-4000-8000-${date.replace(/-/g, '').padEnd(12, '0')}`
+
+type LogRiga = { id?: string; date: string; ex: string; kg: number; reps: number; rpe: number | null; rec?: number | null }
+export function ricaricaNelCloud(st: {
+  log: LogRiga[]
+  checkins: { date: string; sonno?: number; energia?: number; doms?: number; stress?: number; ore?: number }[]
+  meals: { date: string; type: string; name: string; kcal: number; protein: number; carbs: number; fat: number; grams?: number }[]
+  body: { date: string; kg: number }[]
+  water: { date: string; ml: number }[]
+  durate?: Record<string, number>
+}): { log: LogRiga[]; n: number } {
+  const giorni = [...new Set(st.log.map((l) => l.date))].sort()
+  const conId: LogRiga[] = st.log.map((l) => ({ ...l, id: l.id ?? uuid() })) // gli id mancanti li fisso ORA
+  for (const d of giorni) {
+    const sid = sessioneDelGiorno(d)
+    const dur = st.durate?.[d] ?? 0
+    const inizio = new Date(`${d}T12:00:00`)
+    enq({ op: 'ins', t: 'sessione', row: {
+      id: sid, inizio: inizio.toISOString(),
+      fine: dur ? new Date(inizio.getTime() + dur * 1000).toISOString() : null,
+    } })
+    conId.filter((l) => l.date === d).forEach((l, i) => {
+      enq({ op: 'ins', t: 'serie', row: {
+        id: l.id, sessione_id: sid, esercizio: l.ex, ordine: i + 1,
+        peso: l.kg, reps: l.reps, rpe: l.rpe, recupero_sec: l.rec ?? null,
+        ts: new Date(inizio.getTime() + i * 60000).toISOString(), // orari finti ma in ordine
+      } })
+    })
+  }
+  for (const c of st.checkins) checkinSalvato(c)
+  for (const b of st.body) pesoSalvato(b.date, b.kg)
+  for (const w of st.water) acquaSalvata(w.date, w.ml)
+  for (const d of new Set(st.meals.map((m) => m.date))) pastiOggiAggiornati(st.meals, d)
+  return { log: conId, n: conId.length }
+}
+
 // --- Definizioni (schede, obiettivi, impostazioni, custom, piano): un blob per utente ---
 // Le tengo come snapshot unico in config.dati; l'IA le legge intere. Coalescio gli upsert
 // consecutivi così una raffica di modifiche non gonfia la coda.

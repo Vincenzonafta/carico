@@ -27,6 +27,18 @@ insert into utente (id, nome)
 select nuovo, (select email from auth.users where id = nuovo) from trasf
 on conflict (id) do nothing;
 
+-- 0-bis. ⛔ FRENO DI SICUREZZA. Se l'id del vecchio account è sbagliato (o è rimasto il
+--    segnaposto), senza questo controllo il passo 1 cancellerebbe i dati del destinatario e
+--    il passo 2 non porterebbe niente: perdita secca. Qui invece la transazione si ferma.
+do $$
+declare n int;
+begin
+  select count(*) into n from serie where utente_id = (select vecchio from trasf);
+  if n = 0 then
+    raise exception 'FERMO: l''account di partenza non ha nessuna serie. Controlla gli id: cancellare il destinatario adesso significherebbe perdere i suoi dati.';
+  end if;
+end $$;
+
 -- 1. Svuoto il destinatario: senza, i vincoli "una riga per giorno" (checkin, peso, acqua)
 --    farebbero fallire tutto a metà.
 delete from serie          where utente_id = (select nuovo from trasf);

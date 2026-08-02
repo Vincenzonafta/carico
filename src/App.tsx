@@ -13,7 +13,7 @@ import {
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
-import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, pullAll, flush } from './data/sync'
+import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, ricaricaNelCloud, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
 import { chiamaCoach, proponiPeso, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
@@ -4206,6 +4206,17 @@ function Impostazioni({ s, setS, sez }: { s: State; setS: (u: State) => void; se
   const reset = async () => {
     if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(emptyState())
   }
+  // Verso opposto del "carica dal cloud": prende quello che c'è QUI e lo rimanda su.
+  const ripristinaCloud = async () => {
+    if (!supa) return toast('Cloud non configurato')
+    if (!(await supa.auth.getSession()).data.session?.user.id) return toast('Accedi prima nel tuo account')
+    const n = s.log.length
+    if (!(await confirmDlg('Rimandare tutto nel cloud?', `${n} serie più schede, check-in, pasti e peso di questo telefono vengono ricaricati nel tuo account. Non cancella niente di quello che c'è già.`))) return
+    const { log } = ricaricaNelCloud(s)
+    const agg = { ...s, log } // gli id assegnati vanno tenuti: senza, un secondo invio duplicherebbe
+    setS(agg); configSalvata(agg)
+    toast(`${n} serie in coda: la sincronizzazione prosegue da sola`)
+  }
   const restoreCloud = async () => {
     if (!supa) return toast('Cloud non configurato')
     const uid = (await supa.auth.getSession()).data.session?.user.id
@@ -4273,6 +4284,11 @@ function Impostazioni({ s, setS, sez }: { s: State; setS: (u: State) => void; se
         <label className="ghost filebtn">Importa backup
           <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
         </label>
+      </div>
+      <h2>Ripristino</h2>
+      <div className="card">
+        <button className="ghost" onClick={ripristinaCloud}>↥ Rimanda tutto nel cloud</button>
+        <p className="hint">Ricarica nel tuo account quello che hai su questo telefono: serie, schede, check-in, pasti, peso. Serve se nel cloud manca qualcosa. Non cancella niente e si può ripetere senza creare doppioni.</p>
       </div>
       <p className="hint">Schede e pasti vivono su questo dispositivo: un backup ogni tanto non fa male. Le serie vanno anche nel cloud quando sei connesso.</p>
       <h2>Zona pericolosa</h2>
