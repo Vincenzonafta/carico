@@ -101,11 +101,30 @@ const SCHEMA = {
   },
 }
 
+// Confronto "morbido" fra nomi: minuscole, via accenti, gradi e punteggiatura. Serve perché
+// "Panca 60" e "Panca 60°" sono lo stesso esercizio, ma come stringhe sono diversi e
+// finirebbero come due voci separate, ognuna col suo storico.
+// ⚠️ I NUMERI RESTANO: "Panca 30" e "Panca 60" sono inclinazioni diverse e devono rimanere
+// due esercizi distinti. Unire per sbaglio è molto peggio che lasciare un doppione.
+const chiaveNome = (n: string) => n.toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '') // accenti: però → pero
+  .replace(/[°º^]/g, '')                            // gradi: 60° → 60
+  .replace(/[^a-z0-9]+/g, ' ')                      // punteggiatura e simboli → spazio
+  .trim()
+
 // `nota` = spiegazione/correzione scritta dall'ATLETA sulla SUA scheda (la notazione del suo
 // preparatore, che è specifica e NON universale). Va messa in cima e trattata come autoritativa:
 // è lui che ha il documento davanti, e le sue regole battono quelle generali. Il default resta
 // pulito, senza notazioni di un singolo utente.
-export async function parseSchedaFile(file: File, apiKey: string, nota?: string): Promise<Scheda[]> {
+export async function parseSchedaFile(file: File, apiKey: string, nota?: string, libreria: string[] = []): Promise<Scheda[]> {
+  // La libreria dell'atleta va nel prompt: senza, una virgola o un grado di differenza
+  // ("Panca 60" invece di "Panca 60°") crea un doppione con lo storico vuoto.
+  const elenco = libreria.length
+    ? `\n\nESERCIZI CHE L'ATLETA HA GIÀ (usa QUESTI nomi, identici, quando il documento indica
+lo stesso esercizio anche se scritto in modo un po' diverso — maiuscole, accenti, gradi,
+abbreviazioni, singolare/plurale). Inventa un nome nuovo SOLO se nessuno di questi corrisponde:
+${libreria.join(' · ')}`
+    : ''
   const istruzioni = nota?.trim()
     ? `⚠️ REGOLE DELL'ATLETA PER QUESTA SCHEDA — AUTORITATIVE. Leggile PRIMA di tutto e applicale ALLA LETTERA.
 Descrivono la notazione del suo preparatore (specifica di questa scheda) e VINCONO SEMPRE su qualunque
@@ -119,8 +138,8 @@ ${nota.trim()}
 
 Qui sotto le regole GENERALI, da usare solo dove le regole dell'atleta qui sopra non dicono nulla:
 
-${PROMPT}`
-    : PROMPT
+${PROMPT}${elenco}`
+    : PROMPT + elenco
   const b64 = await new Promise<string>((res, rej) => {
     const r = new FileReader()
     r.onload = () => res(String(r.result).split(',')[1] ?? '')
@@ -138,13 +157,16 @@ ${PROMPT}`
   const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
   let raw: unknown
   try { raw = JSON.parse(testo) } catch { throw new Error('L\'IA non ha prodotto un formato valido: riprova.') }
-  const schede = sanitize(raw)
+  const schede = sanitize(raw, libreria)
   if (!schede.length) throw new Error('Nessuna scheda riconosciuta nel documento.')
   return schede
 }
 
 // Difesa in profondità: anche col responseSchema, numeri e campi vengono rivalidati qui.
-function sanitize(raw: unknown): Scheda[] {
+// `libreria` serve a ricondurre i nomi a quelli che l'atleta ha già: chiedere al modello di
+// riusarli aiuta ma non basta, questo confronto invece è deterministico.
+function sanitize(raw: unknown, libreria: string[] = []): Scheda[] {
+  const canonico = new Map(libreria.map((n) => [chiaveNome(n), n]))
   if (!Array.isArray(raw)) return []
   const out: Scheda[] = []
   for (const sc of raw) {
@@ -154,7 +176,7 @@ function sanitize(raw: unknown): Scheda[] {
     for (const d of (Array.isArray(s2.days) ? s2.days : [])) {
       const d2 = d as Record<string, unknown>
       const items = (Array.isArray(d2.items) ? d2.items : [])
-        .map((it) => sanItem(it as Record<string, unknown>))
+        .map((it) => sanItem(it as Record<string, unknown>, canonico))
         .filter((x): x is PlanItem => x !== null)
       if (items.length) dOut.push({ name: String(d2.name ?? 'Giorno'), items })
     }
@@ -168,9 +190,12 @@ const num = (v: unknown, min: number, max: number, dflt: number) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : dflt
 }
 
-function sanItem(it: Record<string, unknown>): PlanItem | null {
-  const ex = String(it.ex ?? '').trim()
-  if (!ex) return null
+function sanItem(it: Record<string, unknown>, canonico: Map<string, string>): PlanItem | null {
+  const grezzo = String(it.ex ?? '').trim()
+  if (!grezzo) return null
+  // se esiste già un esercizio "uguale a meno di simboli", uso IL SUO nome: così l'import si
+  // aggancia allo storico invece di aprire una voce gemella e vuota
+  const ex = canonico.get(chiaveNome(grezzo)) ?? grezzo
   const scheme = Array.isArray(it.scheme) && it.scheme.length
     ? (it.scheme as Record<string, unknown>[]).map((sp): SetSpec => ({
         type: (SET_TYPES.includes(String(sp.type)) ? String(sp.type) : 'normal') as SetType,

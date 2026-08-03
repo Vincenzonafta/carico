@@ -767,7 +767,8 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
     if (!key) return toast('Serve la chiave IA: Profilo → ⚙ → Coach IA')
     setAiImp({ state: 'busy' })
     try {
-      const schede = await parseSchedaFile(f, key, nota)
+      // la libreria va passata: senza, "Panca 60" invece di "Panca 60°" crea un doppione vuoto
+      const schede = await parseSchedaFile(f, key, nota, lib.map((e) => e.name))
       setAiImp({ state: 'preview', schede })
     } catch (err) {
       toast((err as Error).message || 'Errore durante la lettura')
