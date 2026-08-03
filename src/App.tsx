@@ -4206,6 +4206,37 @@ function Impostazioni({ s, setS, sez }: { s: State; setS: (u: State) => void; se
   const reset = async () => {
     if (await confirmDlg('Azzerare tutti i dati?', 'Schede, storico e pasti spariscono. Fai prima un backup.')) setS(emptyState())
   }
+  // Copie che l'app salva da sola quando trova dati locali di un ALTRO account (vedi UIDK).
+  // Le elenco qui: senza, resterebbero sepolte nella memoria del browser.
+  const backupLocali = useMemo(() => {
+    const out: { k: string; uid: string; n: number; schede: number; ultimo: string }[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k?.startsWith('carico-bk-')) continue
+      try {
+        const st = JSON.parse(localStorage.getItem(k) ?? '{}') as Partial<State>
+        const log = st.log ?? []
+        out.push({
+          k, uid: k.slice('carico-bk-'.length), n: log.length,
+          schede: (st.schede ?? []).length,
+          ultimo: log.length ? log[log.length - 1].date : '—',
+        })
+      } catch { /* copia illeggibile: la salto invece di far saltare la schermata */ }
+    }
+    return out
+  }, [])
+  const ripristinaBackup = async (k: string) => {
+    const raw = localStorage.getItem(k)
+    if (!raw) return toast('Copia non più disponibile')
+    if (!(await confirmDlg('Ripristinare questa copia?', 'Sostituisce i dati di questo telefono. Quelli attuali finiscono a loro volta in una copia, quindi non si perde niente.'))) return
+    try {
+      const st = JSON.parse(raw) as Partial<State>
+      localStorage.setItem(`carico-bk-attuali-${Date.now()}`, JSON.stringify(s)) // rete di sicurezza al contrario
+      setS({ ...emptyState(), ...st })
+      toast('Copia ripristinata: controlla i dati, poi usa "Rimanda tutto nel cloud"')
+    } catch { toast('Copia illeggibile') }
+  }
+
   // Verso opposto del "carica dal cloud": prende quello che c'è QUI e lo rimanda su.
   const ripristinaCloud = async () => {
     if (!supa) return toast('Cloud non configurato')
@@ -4290,6 +4321,22 @@ function Impostazioni({ s, setS, sez }: { s: State; setS: (u: State) => void; se
         <button className="ghost" onClick={ripristinaCloud}>↥ Rimanda tutto nel cloud</button>
         <p className="hint">Ricarica nel tuo account quello che hai su questo telefono: serie, schede, check-in, pasti, peso. Serve se nel cloud manca qualcosa. Non cancella niente e si può ripetere senza creare doppioni.</p>
       </div>
+
+      {/* Copie salvate dall'app quando i dati locali appartenevano a un altro account:
+          è l'ultima rete quando qualcosa sparisce sia dal telefono sia dal cloud. */}
+      <h2>Copie di sicurezza sul telefono</h2>
+      {backupLocali.length ? backupLocali.map((b) => (
+        <div className="card" key={b.k} style={{ marginTop: 10 }}>
+          <div className="row" style={{ alignItems: 'baseline' }}>
+            <b style={{ fontSize: 15 }}>{b.n} serie</b>
+            <span className="meta num" style={{ marginLeft: 'auto' }}>{b.schede} schede · fino al {b.ultimo}</span>
+          </div>
+          <div className="meta mono" style={{ marginTop: 4, fontSize: 10.5, opacity: .7 }}>{b.uid}</div>
+          <button className="ghost" style={{ marginTop: 10 }} onClick={() => ripristinaBackup(b.k)}>Ripristina questa copia</button>
+        </div>
+      )) : (
+        <div className="card"><p className="sm mut" style={{ margin: 0 }}>Nessuna copia trovata su questo dispositivo.</p></div>
+      )}
       <p className="hint">Schede e pasti vivono su questo dispositivo: un backup ogni tanto non fa male. Le serie vanno anche nel cloud quando sei connesso.</p>
       <h2>Zona pericolosa</h2>
       <div className="card">
