@@ -93,10 +93,14 @@ supa?.auth.onAuthStateChange((_e, sess) => {
 // --- Sessione di allenamento corrente ---
 // Persistita: sopravvive a reload e blocco telefono. 3 ore senza serie = seduta nuova.
 const SK = 'carico-sess'
-type Sess = { id: string; lastSetAt: number; n: number; ids: string[] }
+// u = di chi è questa seduta. Senza, cambiando account le serie nuove si sarebbero agganciate
+// alla sessione del vecchio utente (che sta in un altro account, o non esiste più).
+type Sess = { id: string; lastSetAt: number; n: number; ids: string[]; u?: string }
 let sess: Sess | null = JSON.parse(localStorage.getItem(SK) ?? 'null')
 const saveSess = () => localStorage.setItem(SK, JSON.stringify(sess))
 const GAP_MS = 3 * 3600_000
+// La seduta aperta vale solo per chi l'ha aperta: per chiunque altro è come non esistesse.
+const sessMia = () => (sess && (!sess.u || sess.u === curUid) ? sess : null)
 
 // uuid() esiste SOLO in contesti sicuri (HTTPS o localhost). Sul telefono via
 // http://192.168... è indefinito e farebbe fallire il salvataggio: qui un fallback che gira ovunque.
@@ -116,10 +120,11 @@ export function uuid(): string {
 // (tempo dall'ultima serie segnata, qualunque esercizio). Ritorna l'id della riga cloud.
 export function serieLoggata(esercizio: string, peso: number, reps: number, rpe: number | null): { id: string; rec: number | null } {
   const now = Date.now()
-  if (!sess || now - sess.lastSetAt > GAP_MS) {
-    sess = { id: uuid(), lastSetAt: now, n: 0, ids: [] }
+  const mia = sessMia()
+  if (!mia || now - mia.lastSetAt > GAP_MS) {
+    sess = { id: uuid(), lastSetAt: now, n: 0, ids: [], u: curUid ?? undefined }
     enq({ op: 'ins', t: 'sessione', row: { id: sess.id, inizio: new Date(now).toISOString() } })
-  }
+  } else sess = mia
   const recupero_sec = sess.n === 0 ? null : Math.round((now - sess.lastSetAt) / 1000)
   const id = uuid()
   sess.n += 1; sess.lastSetAt = now; (sess.ids ??= []).push(id); saveSess()
@@ -139,18 +144,20 @@ export function serieModificata(id: string, patch: { peso?: number; reps?: numbe
 }
 
 export function sessioneChiusa() {
-  if (!sess) return
-  enq({ op: 'upd', t: 'sessione', id: sess.id, patch: { fine: new Date().toISOString() } })
+  const mia = sessMia()
+  if (!mia) return
+  enq({ op: 'upd', t: 'sessione', id: mia.id, patch: { fine: new Date().toISOString() } })
   sess = null; saveSess()
 }
 
 // Abbandona la sessione: cancella dal cloud le serie segnate + la sessione, e torna i loro id
 // così l'app le toglie anche dallo stato locale.
 export function sessioneAnnullata(): string[] {
-  if (!sess) return []
-  const ids = sess.ids ?? []
+  const mia = sessMia()
+  if (!mia) return []
+  const ids = mia.ids ?? []
   for (const id of ids) enq({ op: 'del', t: 'serie', id })
-  enq({ op: 'del', t: 'sessione', id: sess.id })
+  enq({ op: 'del', t: 'sessione', id: mia.id })
   sess = null; saveSess()
   return ids
 }
