@@ -239,6 +239,34 @@ export function prSerie(log: SetLog[], ex: string, date: string): boolean[] {
   })
 }
 
+/**
+ * Fonde due esercizi: tutto ciò che si chiamava `da` passa a `a`. Serve quando lo stesso
+ * esercizio è finito in libreria con due nomi ("Panca 60" e "Panca 60°") e ha lo storico
+ * spezzato in due. Il nome dell'esercizio è la chiave di TUTTO: va cambiato ovunque, non
+ * solo nel log, altrimenti restano puntatori a un esercizio che non esiste più.
+ * Restituisce lo stato nuovo e gli id delle serie toccate (da aggiornare anche nel cloud).
+ */
+export function fondiEsercizi(s: State, da: string, a: string): { stato: State; idSerie: string[] } {
+  const d = structuredClone(s)
+  const idSerie: string[] = []
+  for (const l of d.log) if (l.ex === da) { l.ex = a; if (l.id) idSerie.push(l.id) }
+  for (const sc of d.schede) for (const g of sc.days) for (const it of g.items) if (it.ex === da) it.ex = a
+  for (const e of d.extras) if (e.item.ex === da) e.item.ex = a
+  for (const x of (d.sessionEx ?? [])) if (x.ex === da) x.ex = a
+  for (const it of (d.allenamento?.items ?? [])) if (it.ex === da) it.ex = a
+  if (d.goal.ex === da) d.goal.ex = a
+  // la voce di libreria sparisce: da qui in poi esiste un solo nome
+  d.customExercises = d.customExercises.filter((e) => e.name !== da)
+  // dati per NOME: il vincitore tiene i suoi, quelli del perdente entrano solo se manca il posto
+  const perNome = <T,>(o: Record<string, T> | undefined): Record<string, T> => {
+    const c = { ...(o ?? {}) }
+    if (c[da] !== undefined) { if (c[a] === undefined) c[a] = c[da]; delete c[da] }
+    return c
+  }
+  d.refMax = perNome(d.refMax); d.exVideo = perNome(d.exVideo); d.exDesc = perNome(d.exDesc)
+  return { stato: d, idSerie }
+}
+
 export function massimale(s: State, ex: string): { kg: number; fonte: 'ref' | 'stima' | 'nessuno' } {
   const r = (s.refMax ?? {})[ex]
   // reps=1 è un 1RM VERO: vale il peso stesso. Epley a 1 rep lo gonferebbe (120→124).

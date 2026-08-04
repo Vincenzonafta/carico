@@ -138,8 +138,9 @@ export function serieLoggata(esercizio: string, peso: number, reps: number, rpe:
 // Spunta tolta nell'app: la riga cloud sparisce (il DB deve restare la verità)
 export function serieRimossa(id: string) { enq({ op: 'del', t: 'serie', id }) }
 
-// Serie corretta a posteriori dal calendario: aggiorna la riga cloud (peso/reps/rpe)
-export function serieModificata(id: string, patch: { peso?: number; reps?: number; rpe?: number | null }) {
+// Serie corretta a posteriori: dal calendario (peso/reps/rpe) o dall'unione di due esercizi
+// (esercizio). Aggiorna la riga cloud, così il rinomino non resta solo sul telefono.
+export function serieModificata(id: string, patch: { peso?: number; reps?: number; rpe?: number | null; esercizio?: string }) {
   enq({ op: 'upd', t: 'serie', id, patch })
 }
 
