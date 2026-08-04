@@ -45,12 +45,25 @@ Stessa cosa nel template **Reset password** (serve al "Password dimenticata?"):
 `{{ .Token }}` è il codice a 6 cifre, `{{ .ConfirmationURL }}` è il link: nella stessa email
 possono convivere.
 
-## 3. Se usi il link, dichiara gli indirizzi di ritorno
+## 3. Gli indirizzi di ritorno — ⚠️ DA RIFARE A OGNI CAMBIO DI DOMINIO
 **Authentication → URL Configuration**
-- `Site URL`: l'indirizzo dell'app su Vercel
-- `Redirect URLs`: aggiungi anche `http://localhost:5173` per le prove in locale
+- `Site URL`: **`https://carico-app.vercel.app`** (l'indirizzo attuale dell'app)
+- `Redirect URLs`: aggiungi, uno per riga
+  - `https://carico-app.vercel.app/**`
+  - `http://localhost:5173/**` (prove in locale)
+  - il vecchio dominio, se vuoi che i link già spediti continuino a funzionare
 
-Senza questo il link di conferma rimanda a un indirizzo sbagliato.
+### Perché cambiando dominio si rompe solo l'email
+L'accesso con **Google** continua a funzionare: il suo giro passa dal callback di Supabase,
+che non cambia mai. La **registrazione via email** invece no, perché il link di conferva
+viene costruito con il `Site URL`, che resta indietro.
+
+L'app ora dichiara sempre l'indirizzo da cui parte (`emailRedirectTo`), quindi basta che il
+nuovo dominio sia negli elenchi qui sopra: se non c'è, Supabase lo rifiuta e ripiega sul
+`Site URL` vecchio.
+
+**Nota**: Google Cloud non va toccato. Il suo *redirect URI* punta a Supabase
+(`https://<ref>.supabase.co/auth/v1/callback`), non al tuo dominio.
 
 ## 3-bis. Accesso con Google e con Apple
 

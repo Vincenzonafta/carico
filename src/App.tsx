@@ -3942,7 +3942,9 @@ function AuthForm() {
   const vai = (m: AuthMode) => { pulisci(); setCode(''); setPw2(''); setMode(m) }
 
   const registra = async () => {
-    const r = await sb.auth.signUp({ email: em, password: pw })
+    // emailRedirectTo esplicito: senza, il link di conferma viene costruito con il "Site URL"
+    // di Supabase, che resta indietro a ogni cambio di dominio. Così punta sempre a dove sei.
+    const r = await sb.auth.signUp({ email: em, password: pw, options: { emailRedirectTo: window.location.origin } })
     if (r.error) {
       const t = traduciAuth(r.error.message)
       if (/già registrata/.test(t)) setMode('in') // email esistente: porta al login
@@ -3962,7 +3964,7 @@ function AuthForm() {
     if (!r.error) return // onAuthStateChange chiude il gate
     // non confermata: invece di lasciarlo bloccato, gli rimando il codice e lo porto a verificarlo
     if (/not confirmed/i.test(r.error.message)) {
-      await sb.auth.resend({ type: 'signup', email: em })
+      await sb.auth.resend({ type: 'signup', email: em, options: { emailRedirectTo: window.location.origin } })
       setOtpKind('signup'); setMode('otp')
       return setOk(`Questo account non è ancora confermato: ti ho rimandato un codice a ${em}.`)
     }
@@ -3981,14 +3983,14 @@ function AuthForm() {
 
   const rinvia = async () => {
     const r = otpKind === 'signup'
-      ? await sb.auth.resend({ type: 'signup', email: em })
-      : await sb.auth.resetPasswordForEmail(em)
+      ? await sb.auth.resend({ type: 'signup', email: em, options: { emailRedirectTo: window.location.origin } })
+      : await sb.auth.resetPasswordForEmail(em, { redirectTo: window.location.origin })
     if (r.error) return setMsg(traduciAuth(r.error.message))
     setOk('Codice rinviato: controlla la posta (anche lo spam).')
   }
 
   const recupera = async () => {
-    const r = await sb.auth.resetPasswordForEmail(em)
+    const r = await sb.auth.resetPasswordForEmail(em, { redirectTo: window.location.origin })
     if (r.error) return setMsg(traduciAuth(r.error.message))
     setOtpKind('recovery'); setMode('otp')
     setOk(`Ti ho mandato un codice a ${em} per reimpostare la password.`)
