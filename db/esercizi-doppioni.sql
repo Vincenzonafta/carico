@@ -102,7 +102,12 @@ insert into coppie values
   ('Bicipite singolo su panca 60 in piedi', 'Bicipite singolo su panca 60° in piedi'),
   ('Spider curl manubri 30',                'Spider curl manubri 30°'),
   -- qui invece tengo la grafia corretta e più usata (6 serie contro 3)
-  ('Lowrow presa supina stretta',           'Low row presa supina stretta');
+  ('Lowrow presa supina stretta',           'Low row presa supina stretta'),
+  -- confermati da Vincenzo: stesso esercizio scritto in modo diverso
+  ('lat triangolo',                         'Lat machine triangolo'),
+  -- ⬅️ qui vince il nome CORTO: la scheda importata ha quello lungo e viene riscritta
+  ('Curl da seduto con asta ad altezza faccia e gomiti sulle ginocchia',
+   'Curl da seduto con asta ad altezza faccia');
 
 create temp table u as select id from auth.users where email = 'vincisasso2005@gmail.com';
 
