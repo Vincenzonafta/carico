@@ -320,7 +320,11 @@ export default function App() {
       <InstallPrompt />
 
       {tab === 'oggi' && <Oggi s={s} setS={setS} go={setTab} />}
-      {tab === 'schede' && <Schede s={s} setS={setS} onStart={() => setTab('allena')} workoutActive={workoutStart != null} />}
+      {/* "Inizia questo allenamento" è una scelta ESPLICITA: azzera l'ancora, altrimenti la
+          seduta resterebbe agganciata al giorno di prima e il tasto non farebbe niente.
+          Senza ancora Allena segue la scheda/giorno che hai appena aperto. */}
+      {tab === 'schede' && <Schede s={s} setS={setS} workoutActive={workoutStart != null}
+        onStart={() => { setS((p) => ({ ...p, allenamento: undefined })); setTab('allena') }} />}
       {tab === 'allena' && <Allena s={s} setS={setS} startRest={startRest} stopRest={() => setRest(null)}
         workoutStart={workoutStart} setWorkoutStart={setWorkoutStart} timerActive={timer != null} />}
       {tab === 'cibo' && <Cibo s={s} setS={setS} />}
