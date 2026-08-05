@@ -659,14 +659,12 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
   const [picker, setPicker] = useState(false)
   useTop(view)
 
-  // Guard: con un allenamento in corso la scheda sotto i piedi non si tocca (né si cambia giorno/scheda attiva)
-  const guardWorkout = () => toast('Allenamento in corso: finisci o annulla prima di cambiare scheda o giorno')
+  // Le schede si modificano SEMPRE liberamente: la seduta in corso è una copia ancorata al
+  // suo giorno. Rete di sicurezza: se l'allenamento è partito ma l'ancora manca, la fisso
+  // qui col piano pre-modifica, così l'edit non può entrare nella seduta.
   const mutate = (fn: (d: State) => void) => {
     const d = structuredClone(s)
-    // Con un allenamento in corso la scheda si modifica LIBERAMENTE (la seduta è una copia,
-    // non un link). Ma la copia nasce pigra alla prima modifica in allenamento: se non c'è
-    // ancora, la fisso QUI col piano pre-modifica, altrimenti l'edit entrerebbe nella seduta.
-    if (workoutActive && !(d.allenamento && d.allenamento.date === today() && d.allenamento.scheda === s.activeScheda && d.allenamento.day === s.activeDay)) {
+    if (workoutActive && d.allenamento?.date !== today()) {
       d.allenamento = { date: today(), scheda: s.activeScheda, day: s.activeDay, items: structuredClone(curItems(s)) }
     }
     fn(d); setS(d)
@@ -803,7 +801,8 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
         const nEx = x.days.reduce((a, dd) => a + dd.items.length, 0)
         return (
           <div className="bigcard" key={i} onClick={() => {
-            if (workoutActive) { if (i !== s.activeScheda) return guardWorkout(); setView('scheda'); return }
+            // niente blocchi con l'allenamento in corso: la seduta è ancorata al suo giorno,
+            // qui si naviga e si modifica liberamente senza toccarla
             setS({ ...s, activeScheda: i, activeDay: 0 }); setView('scheda')
           }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -922,7 +921,6 @@ function SchedeManager({ s, setS, onStart, workoutActive }: { s: State; setS: (u
         const min = Math.round(dd.items.reduce((a, it) => a + itemSetCount(it) * (it.rest + 45), 0) / 60)
         return (
           <div className="bigcard" key={i} onClick={() => {
-            if (workoutActive) { if (i !== s.activeDay) return guardWorkout(); setEdit(null); setView('day'); return }
             setS({ ...s, activeDay: i }); setEdit(null); setView('day')
           }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -1536,11 +1534,14 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   const skipped = new Set((s.sessionEx ?? []).filter((x) => x.date === today() && x.skip).map((x) => x.ex))
   // L'allenamento è una COPIA della scheda: se esiste una copia per OGGI (stesso scheda/giorno)
   // il piano viene da lì, altrimenti dalla scheda viva. La copia nasce alla prima modifica in corsa.
-  const copiaOk = s.allenamento && s.allenamento.date === today() && s.allenamento.scheda === s.activeScheda && s.allenamento.day === s.activeDay
-  const baseItems = copiaOk ? s.allenamento!.items : curItems(s)
+  // ANCORA: appena l'allenamento parte, la copia del giorno diventa la sorgente e ci resta.
+  // Da lì in poi in Schede puoi girare e modificare quello che vuoi: la seduta non si muove.
+  // Senza copia (allenamento non ancora iniziato) si segue la scheda attiva, come prima.
+  const anc = s.allenamento?.date === today() ? s.allenamento : null
+  const baseItems = anc ? anc.items : curItems(s)
   // Garantisce la copia del giorno su una bozza di stato e ne torna gli items da mutare.
   const ensureCopia = (d: State): PlanItem[] => {
-    if (!(d.allenamento && d.allenamento.date === today() && d.allenamento.scheda === s.activeScheda && d.allenamento.day === s.activeDay)) {
+    if (d.allenamento?.date !== today()) {
       d.allenamento = { date: today(), scheda: s.activeScheda, day: s.activeDay, items: structuredClone(curItems(s)) }
     }
     return d.allenamento.items
@@ -1556,7 +1557,9 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
   })
   const extras = s.extras.filter((e) => e.date === today()).map((e) => e.item)
   const items = [...plan, ...extras]
-  const day = curDay(s)
+  // anche i nomi in intestazione seguono l'ancora, sennò diresti "Push A" mentre alleni Pull B
+  const schedaAll = anc ? s.schede[anc.scheda] : curScheda(s)
+  const day = anc ? schedaAll?.days[anc.day] : curDay(s)
   const lib = libreriaEsercizi(s)
   const [summary, setSummary] = useState<{ sets: number; tonnage: number; avgRpe: number; prs: string[]; kcal: number; health: HealthPayload; startMs: number | null; endMs: number } | null>(null)
   const [barCalc, setBarCalc] = useState<{ it: PlanItem; sp: SetSpec; i: number; target?: number } | null>(null)
@@ -1826,7 +1829,13 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     let rec: number | null = null
     try { const r = serieLoggata(it.ex, kg || 0, +d.reps, rpe); id = r.id; rec = r.rec } // specchio cloud + recupero reale
     catch (e) { console.warn('[serie cloud]', e) } // un errore di sync NON deve bloccare il salvataggio locale
-    setS({ ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg: kg || 0, reps: +d.reps, rpe, timed: timed || undefined, rec }] })
+    const dopo: State = { ...s, log: [...s.log, { id, date: today(), ex: it.ex, kg: kg || 0, reps: +d.reps, rpe, timed: timed || undefined, rec }] }
+    // Prima serie della giornata: fisso l'ANCORA. Da qui la seduta è legata a questo giorno
+    // e in Schede puoi navigare ovunque senza spostartela sotto i piedi.
+    if (dopo.allenamento?.date !== today()) {
+      dopo.allenamento = { date: today(), scheda: s.activeScheda, day: s.activeDay, items: structuredClone(baseItems) }
+    }
+    setS(dopo)
     if (isPr) { setPr({ ex: it.ex, kg, reps: +d.reps }); navigator.vibrate?.([90, 60, 90]) }
     startRest(it.rest)
     if (!cloudNudged) { // primo salvataggio: dico chiaramente dove sta finendo il dato
@@ -2156,7 +2165,7 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
           <div className="wbar">
             <div className="wbar-top">
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="crumb">{curScheda(s)?.name} · allenamento</div>
+                <div className="crumb">{schedaAll?.name} · allenamento</div>
                 <div className="wbar-day">{day?.name}</div>
               </div>
               {workoutStart != null && <button onClick={abort} style={{ width: 'auto', padding: '8px 12px', marginRight: 8, background: 'transparent', color: 'var(--coral)', fontSize: 13 }}>Annulla</button>}
