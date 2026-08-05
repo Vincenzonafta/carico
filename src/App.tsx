@@ -3154,6 +3154,14 @@ function ExDettaglio({ s, setS, ex, onDeleted }: { s: State; setS: (u: State) =>
 
       <h2>Storico · {ds.length} sedute</h2>
       <div className="card" style={{ padding: '4px 12px' }}>
+        {/* la migliore di sempre in cima: è il metro con cui leggi tutte le righe sotto */}
+        {rec && (
+          <div className="set">
+            <span className="prtag">★ migliore</span>
+            <b className="num sm">{fmt(rec.kg)} × {rec.reps}{rec.rpe != null ? ` @${fmt(rec.rpe)}` : ''}</b>
+            <span className="meta num" style={{ marginLeft: 'auto' }}>{rec.date.slice(5).split('-').reverse().join('/')}</span>
+          </div>
+        )}
         {ds.slice().reverse().map((d) => {
           const ss = s.log.filter((x) => x.ex === ex && x.date === d)
           const ar = avgRpeOf(s.log, ex, d)
