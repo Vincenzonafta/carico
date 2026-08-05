@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   type State, type Scheda, type PlanItem, today, fmt, proposta, readiness, readinessOn, e1rm,
-  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, maxStimato, massimale, progressione, contestoEsercizio,
+  e1rmRpe, caricoPerRpe, round25, sessionExOf, setSessionEx, parseTarget, massimale, progressione, contestoEsercizio,
   historyDates, bestE1rm, avgRpeOf, record, prSerie,
   prsForSession, sessionSummary, weeklyReport, nutritionToday, emptyState, stimaCalorie,
   muscleVolume, waterToday, waterGoal, adaptSession,
@@ -15,7 +15,7 @@ import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, ricaricaNelCloud, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
-import { chiamaCoach, proponiPeso, type ChatMsg } from './ai/coach'
+import { chiamaCoach, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
@@ -1744,69 +1744,6 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     return round25(kg)
   }
 
-  // Chiede all'IA di correggere il peso già calcolato. Serve una base: senza storico
-  // non c'è niente da correggere, e l'utente lo chiede al coach in chat (che ha gli strumenti).
-  const [iaBusy, setIaBusy] = useState(false)
-  // base = il carico ARITMETICO (sempre calcolato), kg = quello dell'IA: due configurazioni
-  // parallele, si mostrano entrambe e l'atleta sceglie
-  const [iaSugg, setIaSugg] = useState<{ ex: string; i: number; kg: number; base: number; delta: number | null; perche: string } | null>(null)
-  const chiediPeso = async (it: PlanItem, sp: SetSpec, i: number) => {
-    const apiKey = s.settings.geminiKey?.trim()
-    if (!apiKey) return toast('Serve la chiave Gemini: Profilo → ⚙ → Coach IA')
-    // base 0 = mai fatto: NON è un motivo per rifiutare, è il caso in cui l'IA serve di più
-    const base = propose(it, sp) ?? 0
-    // tetto di sicurezza per la stima a freddo: nessun esercizio nuovo supera il suo massimo di sempre
-    const tetto = Math.max(60, ...s.log.filter((l) => !l.timed).map((l) => maxStimato(s.log, l.ex))) * 1.2
-    const reps = parseInt(sp.reps, 10) || itemReps(it)
-    const rpe = parseTarget(sp.target)
-    const fatti = items.slice(0, items.indexOf(it)).filter((x) => logOf(x.ex).length)
-    const righe = [
-      `Esercizio: ${it.ex} (${it.muscle}), serie ${i + 1} di ${specs(it).length}.`,
-      `Prescrizione: ${reps} ripetizioni${rpe ? ` a RPE ${fmt(rpe)}` : ''}${sp.load ? `, carico ${sp.load}` : ''}${it.tempo ? `, tempi ${it.tempo}` : ''}.`,
-      base > 0
-        ? `Peso calcolato dall'aritmetica: ${fmt(base)} kg (massimale ${massimale(s, it.ex).fonte === 'ref' ? 'DICHIARATO dall\'atleta' : 'solo stimato dallo storico'}: ${fmt(round25(massimale(s, it.ex).kg))} kg).`
-        : `NON ha mai registrato questo esercizio: non c'è storico da cui calcolare.`,
-      // record in forma reps (120x8): il coach lo cita così com'è, non come 1RM astratto
-      (s.refMax ?? {})[it.ex] ? `Il suo RECORD dichiarato su ${it.ex}: ${fmt(s.refMax[it.ex].kg)} kg × ${s.refMax[it.ex].reps} reps.` : '',
-      `Suoi massimali sugli altri esercizi: ${[...new Set(s.log.filter((l) => !l.timed).map((l) => l.ex))].map((e) => `${e} ${fmt(round25(massimale(s, e).kg))} kg`).join(', ') || 'nessuno'}.`,
-      // recupero IMPOSTATO: è l'ancora del carico proposto. In minuti perché il modello non
-      // debba convertirlo a mente e non sbagli a giudicare se è corto o abbondante.
-      `Recupero IMPOSTATO per questo esercizio: ${it.rest} secondi (${mmss(it.rest)} minuti). È questo il recupero su cui calibrare il carico.`,
-      // alimentazione + deficit (il "sono in cut" che l'utente vuole considerato)
-      (() => {
-        const n = nutritionToday(s.meals, today()); const kcal = Math.round(n.kcal); const t = s.target.kcal
-        const cut = t > 0 && kcal < t * 0.9 ? ' — sotto il fabbisogno, probabile deficit/cut' : ''
-        const peso = s.body.length ? `Peso corporeo ${fmt(s.body[s.body.length - 1].kg)} kg. ` : ''
-        return `${peso}Oggi ha mangiato ${kcal}/${t} kcal, proteine ${Math.round(n.protein)}/${s.target.protein} g${cut}.`
-      })(),
-      `Readiness oggi ${readiness(s.checkin)}/100 — sonno ${s.checkin.sonno}, energia ${s.checkin.energia}, DOMS ${s.checkin.doms}, stress ${s.checkin.stress}.`,
-      // CONTESTO DI OGGI: dov'è nell'ordine e quanto quel muscolo è già stato colpito.
-      // pos e pre-affaticamento si leggono da ciò che è già stato fatto oggi (fatti + logOf).
-      (() => {
-        const pos = fatti.length + 1
-        const preSerie = fatti.filter((x) => x.muscle === it.muscle).reduce((a, x) => a + logOf(x.ex).length, 0)
-        return `Oggi è il ${pos}° esercizio della seduta; su ${it.muscle} hai già fatto ${preSerie} serie prima di questo. ${pos > 1 ? 'Muscolo pre-affaticato: è normale usare meno di quando era il primo esercizio.' : 'Muscolo fresco.'}`
-      })(),
-      // STORICO ANNOTATO COL CONTESTO: il peso nudo inganna, la posizione lo spiega
-      `Sedute passate di ${it.ex} (1RM stimato · posizione · serie di ${it.muscle} prima): ${progressione(s, it.ex).map((p) => `${p.date} ${fmt(round25(p.e1rm))}kg al ${p.pos}° con ${p.preSerie} serie prima`).join(' · ') || 'nessuna'}. Giudica la PROGRESSIONE tenendo conto del contesto, non del peso nudo.`,
-      // RECUPERI REALI misurati (ora anche in locale)
-      (() => { const rec = logOf(it.ex).map((l) => l.rec).filter((r): r is number => r != null)
-        return rec.length ? `Recuperi reali fra le serie di oggi su questo esercizio: ${rec.join(', ')} sec. Se più corti del solito, cala il carico.` : '' })(),
-      // SERIE GIÀ FATTE OGGI su questo esercizio: al ri-click l'IA vede com'è andata e adatta la prossima
-      (() => { const oggi = logOf(it.ex)
-        return oggi.length ? `Serie GIÀ fatte oggi su questo esercizio: ${oggi.map((l) => `${fmt(l.kg)}x${l.reps}${l.rpe ? '@' + fmt(l.rpe) : ''}`).join(' · ')}. Stai proponendo il peso per la serie ${i + 1}: tieni conto di com'è andata.` : 'Prima serie di oggi su questo esercizio.' })(),
-      sessionExOf(s, it.ex, today())?.note ? `Sua nota di oggi su questo esercizio: "${sessionExOf(s, it.ex, today())!.note}"` : '',
-    ].filter(Boolean)
-    setIaBusy(true)
-    try {
-      const { kg, delta, perche } = await proponiPeso(apiKey, righe.join('\n'), base, tetto)
-      // il risultato RESTA a schermo: un avviso da 2 secondi non basta per leggere peso e motivo
-      setIaSugg({ ex: it.ex, i, kg, base, delta, perche })
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Il coach non ha risposto')
-    } finally { setIaBusy(false) }
-  }
-
   const key = (ex: string, i: number) => ex + '#' + i
   const getDraft = (it: PlanItem, sp: SetSpec, i: number): Draft => {
     const d = draft[key(it.ex, i)]
@@ -2097,37 +2034,12 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
                   </div>
                 )
               })}
-              {iaSugg && iaSugg.ex === it.ex && (
-                <div className="iasugg">
-                  <div className="iah">
-                    <span className="l">✨ Consiglio del coach · oggi</span>
-                    <b className="num">{fmt(iaSugg.kg)} kg</b>
-                    {iaSugg.delta != null && iaSugg.delta !== 0 && <span className="iad num">{iaSugg.delta > 0 ? '+' : ''}{fmt(iaSugg.delta)}%</span>}
-                    {iaSugg.delta === null && <span className="iad">prima volta</span>}
-                  </div>
-                  <p>{iaSugg.perche}</p>
-                  {/* i due numeri convivono: l'aritmetico c'è SEMPRE, l'IA è il consiglio ragionato */}
-                  <div className="duecar">
-                    <button onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.kg) }); setIaSugg(null) }}>
-                      <span className="l">Coach</span><b className="num">{fmt(iaSugg.kg)} kg</b>
-                    </button>
-                    {iaSugg.base > 0 && (
-                      <button className="alt" onClick={() => { setD(it, sps[iaSugg.i] ?? sps[done], iaSugg.i, { kg: String(iaSugg.base) }); setIaSugg(null) }}>
-                        <span className="l">Aritmetico</span><b className="num">{fmt(iaSugg.base)} kg</b>
-                      </button>
-                    )}
-                  </div>
-                  <button className="ghost mini" style={{ width: '100%', marginTop: 8 }} onClick={() => setIaSugg(null)}>Lascia stare</button>
-                </div>
-              )}
               <div className="setbtns" style={{ marginTop: 12 }}>
                 <button className="restchip" style={{ margin: 0, justifyContent: 'center' }} onClick={() => setRestPick({ ex: it.ex, isExtra })}>
                   <Clock /> Riposo <b className="num">{mmss(it.rest)}</b>
                 </button>
                 {done < sps.length && <button className="addset" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 14px' }} onClick={() => setBarCalc({ it, sp: sps[done], i: done, target: parseFloat(getDraft(it, sps[done], done).kg.replace(',', '.')) || undefined })} title="Calcolatore bilanciere"><svg viewBox="0 0 24 24" className="misvg" style={{ width: 20, height: 20 }}><path d="M4 9v6M6.5 7v10M6.5 12h11M17.5 7v10M20 9v6" /></svg></button>}
                 {done < sps.length && <button className="addset num" style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13, letterSpacing: '.06em' }} onClick={() => setRpeCalc({ it, sp: sps[done], i: done })} title="Calcolatore RPE">RPE</button>}
-                {done < sps.length && <button className="addset" disabled={iaBusy} style={{ marginTop: 0, flex: 'none', width: 'auto', padding: '0 12px', fontSize: 13 }}
-                  onClick={() => chiediPeso(it, sps[done], done)} title="Chiedi al coach che peso usare">{iaBusy ? 'penso…' : '✨ Peso'}</button>}
                 {/* a esercizio finito questo è IL tasto che serve (continuare con un'altra serie):
                     diventa pieno e a riga intera, invece di restare un tratteggio tra gli altri */}
                 <button className={'addset' + (exDone ? ' vai' : '')} style={{ marginTop: 0, flex: exDone ? '1 0 100%' : 'none', width: 'auto', padding: exDone ? '12px' : '0 14px' }}
