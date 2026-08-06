@@ -95,6 +95,9 @@ type HealthPayload = { durata: number; calorie: number; distanza: number; data?:
 //   durata  = minuti (Salute calcola la fine da inizio + durata)
 //   calorie = kcal stimate ·  distanza = metri (0 per la palestra)
 const inviaSalute = (p: HealthPayload) => {
+  // Senza durata la Shortcut calcola fine = inizio e Salute rifiuta con "endDate must be
+  // after startDate". Capita sugli allenamenti vecchi, salvati prima che tenessimo la durata.
+  if (!(p.durata >= 1)) return toast('Manca la durata: scrivila nel Calendario, apri il giorno e compila "Durata (min)"')
   // inizio a mezzogiorno del giorno: il fuso non fa scivolare l'allenamento al giorno prima/dopo
   const payload = { inizio: `${p.data ?? today()}T12:00:00`, durata: p.durata, calorie: p.calorie, distanza: p.distanza }
   window.location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SALUTE_SHORTCUT)}&input=text&text=${encodeURIComponent(JSON.stringify(payload))}`

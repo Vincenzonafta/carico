@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# indice locale di codegraph: si rigenera, non va condiviso
+.codegraph/
