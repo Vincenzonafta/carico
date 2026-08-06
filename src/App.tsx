@@ -440,8 +440,18 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
   const ore = s.checkin.ore ?? 7.5
   const rHist = [...s.checkins].sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-8).map(readiness)
 
-  const day = curDay(s)
-  const items = curItems(s)
+  // Stessa ancora di Allena: se la seduta è partita, la home parla di QUELLA, non della
+  // scheda che hai lasciato aperta in Schede.
+  const anc = s.allenamento?.date === today() ? s.allenamento : null
+  const day = anc ? s.schede[anc.scheda]?.days[anc.day] : curDay(s)
+  const items = anc ? anc.items : curItems(s)
+  // A che punto è la giornata: da fare · a metà · chiusa
+  const setsOggi = s.log.filter((l) => l.date === today())
+  const finito = s.finishedDate === today() && setsOggi.length > 0
+  const iniziato = setsOggi.length > 0 && !finito
+  const seriePreviste = items.reduce((a, it) => a + itemSetCount(it), 0)
+  const sumOggi = sessionSummary(s.log, today())
+  const durOggi = Math.round((s.durate?.[today()] ?? 0) / 60)
   const adapted = adaptSession(items, minutes)
   const muscles = [...new Set(items.map((it) => it.muscle))]
   const estMin = Math.round(items.reduce((a, it) => a + itemSetCount(it) * (it.rest + 45), 0) / 60)
@@ -462,7 +472,9 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
   const under = mvEntries.filter(([, n]) => n < 8).map(([m]) => m)
 
   const h = new Date().getHours()
-  const hi = h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'
+  // il nome sta in Profilo e non lo usava nessuno: qui costa una riga e cambia il tono
+  const hi = (h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera')
+    + (s.settings.nome?.trim() ? ` ${s.settings.nome.trim()}` : '')
   const nudge = !ciToday
     ? 'Fai il check-in di oggi: 20 secondi e i pesi proposti diventano affidabili.'
     : r < 65 ? `Readiness ${r}/100: ho ridotto i carichi del 10%, punta a serie pulite.`
@@ -492,8 +504,21 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
 
       {/* ALLENAMENTO: la card d'azione. L'elenco esercizi non è più sempre aperto — occupava
           mezza pagina prima ancora di sapere se ti interessa. */}
-      <h2>Oggi ti alleni</h2>
-      {items.length ? (
+      <h2>{finito ? 'Oggi hai finito' : iniziato ? 'Allenamento in corso' : 'Oggi ti alleni'}</h2>
+      {finito ? (
+        // seduta chiusa: la home non deve più dire "inizia", deve dirti com'è andata
+        <div className="card done" style={{ marginTop: 4 }}>
+          <div className="donecirc"><svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6" /></svg></div>
+          <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 17 }}>{day?.name}</div>
+          <div className="tiles" style={{ marginTop: 12 }}>
+            <div className="tile"><div className="l">Serie</div><div className="v num">{sumOggi.sets}</div></div>
+            <div className="tile"><div className="l">Volume</div><div className="v num">{fmt(sumOggi.tonnage / 1000)} <span className="sm mut">t</span></div></div>
+            <div className="tile"><div className="l">Durata</div><div className="v num">{durOggi || '—'} <span className="sm mut">min</span></div></div>
+            <div className="tile"><div className="l">RPE medio</div><div className="v num">{sumOggi.avgRpe ? fmt(sumOggi.avgRpe) : '—'}</div></div>
+          </div>
+          <button className="ghost" style={{ marginTop: 12 }} onClick={goAllena}>Rivedi la seduta</button>
+        </div>
+      ) : items.length ? (
         <div className="card startcard">
           <div className="sh">
             <span className="exbar" style={{ background: mcolor(muscles[0] ?? ''), minHeight: 40 }} />
@@ -503,7 +528,14 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
               <div className="mdots">{muscles.map((m) => <span className="mdot" key={m} style={{ background: mcolor(m) }} />)}</div>
             </div>
           </div>
-          <button onClick={goAllena}>▶ Inizia l'allenamento</button>
+          {/* a metà seduta serve sapere quanto manca, non "inizia" */}
+          {iniziato && seriePreviste > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div className="bt"><i style={{ width: Math.min(100, (setsOggi.length / seriePreviste) * 100) + '%', background: 'var(--lime)' }} /></div>
+              <div className="meta num" style={{ marginTop: 6 }}>{setsOggi.length} serie su {seriePreviste} · {fmt(volume(setsOggi) / 1000)} t</div>
+            </div>
+          )}
+          <button onClick={goAllena}>{iniziato ? '▶ Riprendi l\'allenamento' : '▶ Inizia l\'allenamento'}</button>
           <button className="ghost" style={{ marginTop: 8 }} onClick={() => setOpenEs((v) => !v)}>
             {openEs ? 'Nascondi gli esercizi' : `Vedi i ${items.length} esercizi e i pesi`}
           </button>
