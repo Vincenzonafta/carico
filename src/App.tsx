@@ -15,7 +15,7 @@ import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
 import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, ricaricaNelCloud, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
-import { chiamaCoach, type ChatMsg } from './ai/coach'
+import { chiamaCoach, calorieBruciate, type ChatMsg } from './ai/coach'
 import { parseSchedaFile } from './ai/parser'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
@@ -1817,7 +1817,40 @@ function Allena({ s, setS, startRest, stopRest, workoutStart, setWorkoutStart, t
     stopRest()            // e il timer di recupero
     sessioneChiusa()      // chiudo la sessione nel cloud
     // durata salvata per data: sopravvive al ricarico dell'app e resta correggibile dal calendario
-    setS({ ...s, finishedDate: today(), finishedKcal: kcal, finishedHealth: health, durate: { ...(s.durate ?? {}), [today()]: durataSec } })
+    const dopo: State = { ...s, finishedDate: today(), finishedKcal: kcal, finishedHealth: health, durate: { ...(s.durate ?? {}), [today()]: durataSec } }
+    setS(dopo)
+    void affinaCalorie(dopo, durataSec, pesoCorporeo, kcal) // in sottofondo: la formula è già a schermo
+  }
+
+  // La formula usa un MET fisso e ignora COSA hai fatto. Il modello guarda carico, muscoli e
+  // sforzo. Gira DOPO aver mostrato il risultato: se non c'è chiave o rete resta la formula.
+  // `base` = lo stato appena salvato da finish(): setS qui è un prop, non un setter React, quindi
+  // non posso aggiornare in funzione del precedente e lo ricevo esplicitamente.
+  const affinaCalorie = async (base: State, durataSec: number, pesoKg: number, formula: number) => {
+    const apiKey = base.settings.geminiKey?.trim()
+    if (!apiKey || durataSec < 60) return
+    const sets = base.log.filter((l) => l.date === today())
+    const rpes = sets.filter((l) => l.rpe != null).map((l) => l.rpe as number)
+    const recs = sets.map((l) => l.rec).filter((r): r is number => r != null)
+    const perMuscolo = [...new Set(sets.map((l) => muscleOf(s, l.ex)))]
+      .map((m) => `${m} ${sets.filter((l) => muscleOf(s, l.ex) === m).length} serie`)
+    const ctx = [
+      `Durata: ${Math.round(durataSec / 60)} minuti. Peso corporeo: ${fmt(pesoKg)} kg.`,
+      `Serie totali: ${sets.length}. Carico spostato: ${fmt(volume(sets) / 1000)} tonnellate.`,
+      `Gruppi muscolari: ${perMuscolo.join(', ') || 'non indicati'}.`,
+      rpes.length ? `RPE medio ${fmt(rpes.reduce((a, b) => a + b, 0) / rpes.length)} su 10.` : 'RPE non segnato.',
+      recs.length ? `Recupero medio fra le serie: ${Math.round(recs.reduce((a, b) => a + b, 0) / recs.length)} secondi.` : '',
+      `Per riferimento, una formula grezza a MET fisso darebbe ${formula} kcal.`,
+    ].filter(Boolean).join('\n')
+    try {
+      const ia = await calorieBruciate(apiKey, ctx)
+      if (!Number.isFinite(ia) || ia <= 0 || formula <= 0) return // risposta inutilizzabile: resta la formula
+      // Il clamp è QUI e non nel prompt: questo numero finisce in Apple Health, e un'allucinazione
+      // non deve poterci scrivere 5000 kcal. Si accetta solo dentro la banda attorno alla formula.
+      const kcal = Math.round(Math.max(formula * 0.4, Math.min(formula * 2.5, ia)))
+      setSummary((p) => (p ? { ...p, kcal, health: { ...p.health, calorie: kcal } } : p))
+      setS({ ...base, finishedKcal: kcal, finishedHealth: base.finishedHealth ? { ...base.finishedHealth, calorie: kcal } : base.finishedHealth })
+    } catch { /* niente rete o modello giù: resta la formula, già mostrata */ }
   }
   const chiudiSummary = () => setSummary(null) // chiudo il riepilogo: resta la schermata "completato"
   const abort = async () => {

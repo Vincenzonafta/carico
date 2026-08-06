@@ -37,6 +37,31 @@ Considera l'ordine (n) e i muscoli già colpiti nella seduta di oggi quando cons
 Se ti mancano dati per rispondere bene, dillo chiaramente e spiega cosa registrare nell'app.
 Non sei un medico: su infortuni e dolori rimanda a un professionista, senza fare diagnosi.`
 
+// ===== Calorie bruciate =====
+// La formula in coach.ts usa un MET fisso: un'ora di squat pesanti e un'ora di curl leggeri
+// danno lo stesso numero. Qui il modello guarda cosa hai fatto davvero. UNA chiamata a fine
+// seduta, in sottofondo: l'app intanto mostra già il valore della formula.
+const SYSTEM_KCAL = `Sei un fisiologo dello sport. Ti do i dati di UNA seduta di pesi appena finita.
+Stima le calorie totali bruciate durante la seduta (solo l'attività, NON il metabolismo basale).
+Pesa: durata e peso corporeo, quanto carico è stato spostato, quante serie, quali gruppi muscolari
+(le gambe costano molto più delle braccia), lo sforzo percepito e i recuperi (recuperi lunghi =
+meno dispendio a parità di tempo).
+Rispondi SOLO con il numero: "kcal", intero, senza spiegazioni.`
+
+export async function calorieBruciate(apiKey: string, contesto: string): Promise<number> {
+  const j = await postGemini(apiKey, {
+    systemInstruction: { parts: [{ text: SYSTEM_KCAL }] },
+    contents: [{ role: 'user', parts: [{ text: contesto }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: { type: 'object', properties: { kcal: { type: 'number' } }, required: ['kcal'] },
+    },
+  })
+  const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+  const n = Number((JSON.parse(testo) as { kcal?: unknown }).kcal)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+}
+
 // Una chiamata al coach: storia della chat + contesto del momento. Gira il loop tool-use:
 // Gemini chiama gli strumenti → noi eseguiamo le query → gli ridiamo i risultati → risposta finale.
 export async function chiamaCoach(history: ChatMsg[], apiKey: string, contesto: string): Promise<string> {
