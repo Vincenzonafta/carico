@@ -1,7 +1,7 @@
 // Parser IA delle schede: da PDF/foto al formato dell'app, con la chiave dell'utente (BYOK).
 // Structured output (responseSchema): Gemini NON può produrre un formato diverso dal nostro.
 // A valle c'è comunque l'ANTEPRIMA obbligatoria: si importa solo dopo conferma dell'utente.
-import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType } from '../coach'
+import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType, type MealPlan, type MealType, type PlanFood } from '../coach'
 import { postGemini } from './gemini'
 
 const PROMPT = `Estrai TUTTO il programma di allenamento da questo documento (tabella, foto o testo, in qualsiasi lingua).
@@ -112,6 +112,27 @@ const chiaveNome = (n: string) => n.toLowerCase()
   .replace(/[^a-z0-9]+/g, ' ')                      // punteggiatura e simboli → spazio
   .trim()
 
+// Manda un documento (PDF o foto) a Gemini e ne riporta il JSON. Condiviso fra il parser
+// delle schede e quello della dieta: cambiano solo istruzioni e schema.
+async function leggiDocumento(file: File, apiKey: string, istruzioni: string, schema: unknown): Promise<unknown> {
+  const b64 = await new Promise<string>((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(String(r.result).split(',')[1] ?? '')
+    r.onerror = () => rej(new Error('File non leggibile'))
+    r.readAsDataURL(file)
+  })
+  if (!b64) throw new Error('File vuoto o non leggibile')
+  const j = await postGemini(apiKey, {
+    contents: [{ role: 'user', parts: [
+      { inlineData: { mimeType: file.type || 'application/pdf', data: b64 } },
+      { text: istruzioni },
+    ] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
+  })
+  const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+  try { return JSON.parse(testo) } catch { throw new Error("L'IA non ha prodotto un formato valido: riprova.") }
+}
+
 // `nota` = spiegazione/correzione scritta dall'ATLETA sulla SUA scheda (la notazione del suo
 // preparatore, che è specifica e NON universale). Va messa in cima e trattata come autoritativa:
 // è lui che ha il documento davanti, e le sue regole battono quelle generali. Il default resta
@@ -140,23 +161,7 @@ Qui sotto le regole GENERALI, da usare solo dove le regole dell'atleta qui sopra
 
 ${PROMPT}${elenco}`
     : PROMPT + elenco
-  const b64 = await new Promise<string>((res, rej) => {
-    const r = new FileReader()
-    r.onload = () => res(String(r.result).split(',')[1] ?? '')
-    r.onerror = () => rej(new Error('File non leggibile'))
-    r.readAsDataURL(file)
-  })
-  if (!b64) throw new Error('File vuoto o non leggibile')
-  const j = await postGemini(apiKey, {
-    contents: [{ role: 'user', parts: [
-      { inlineData: { mimeType: file.type || 'application/pdf', data: b64 } },
-      { text: istruzioni },
-    ] }],
-    generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA },
-  })
-  const testo = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-  let raw: unknown
-  try { raw = JSON.parse(testo) } catch { throw new Error('L\'IA non ha prodotto un formato valido: riprova.') }
+  const raw = await leggiDocumento(file, apiKey, istruzioni, SCHEMA)
   const schede = sanitize(raw, libreria)
   if (!schede.length) throw new Error('Nessuna scheda riconosciuta nel documento.')
   return schede
@@ -218,4 +223,103 @@ function sanItem(it: Record<string, unknown>, canonico: Map<string, string>): Pl
     ss: it.ss === true ? true : undefined,
     scheme,
   }
+}
+
+// ═══════════════ PARSER DIETA ═══════════════
+// Stessa impostazione delle schede: documento → JSON nel formato dell'app → anteprima.
+// La differenza che conta: qui i NOMI devono agganciarsi all'archivio alimenti, altrimenti
+// `foodLookup` non trova le calorie e il pasto entra a zero. Per questo l'elenco degli
+// alimenti conosciuti va nel prompt, e a valle c'è comunque il confronto morbido.
+const PROMPT_DIETA = `Estrai il piano alimentare da questo documento (tabella, foto o testo, in qualsiasi lingua).
+
+REGOLE:
+- Ogni pasto del piano diventa uno "slot" con il suo "type", esattamente uno tra:
+  colazione, pranzo, cena, spuntino. Merenda/snack/break → spuntino.
+- Se ci sono più spuntini (mattina, pomeriggio, sera) mettili come slot "spuntino" separati,
+  nell'ordine del documento.
+- "grams" SEMPRE in grammi, numero intero. Converti tu le misure casalinghe:
+  1 uovo medio ≈ 60, 1 cucchiaio di olio ≈ 10, 1 cucchiaino ≈ 5, 1 fetta di pane ≈ 30,
+  1 tazza di latte ≈ 250, 1 vasetto di yogurt ≈ 125, 1 scatoletta di tonno ≈ 80 (sgocciolato).
+  Se il documento dà un peso "da crudo" o "da secco", usa QUEL numero.
+- ALTERNATIVE ("oppure", "o in alternativa", "/"): prendi SOLO la prima opzione.
+- Quantità a intervallo ("100-150 g"): usa il valore più alto.
+- Se una quantità non è indicata, metti 100 e non inventare.
+- Integratori, caffè, acqua e tisane SENZA calorie: saltali, non sono alimenti da tracciare.
+- "name" = il nome dell'alimento da solo, senza quantità e senza note di preparazione
+  ("Petto di pollo alla piastra 150g" → name "Petto di pollo", grams 150).
+- NON inventare pasti o alimenti che non ci sono nel documento.`
+
+const SCHEMA_DIETA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    slots: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['colazione', 'pranzo', 'cena', 'spuntino'] },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { name: { type: 'string' }, grams: { type: 'integer' } },
+              required: ['name', 'grams'],
+            },
+          },
+        },
+        required: ['type', 'items'],
+      },
+    },
+  },
+  required: ['name', 'slots'],
+}
+
+export async function parseDietaFile(file: File, apiKey: string, nota?: string, alimenti: string[] = []): Promise<MealPlan> {
+  const elenco = alimenti.length
+    ? `\n\nALIMENTI GIÀ IN ARCHIVIO (usa QUESTI nomi, identici, quando l'alimento è lo stesso anche
+se scritto diversamente). Solo così l'app trova le calorie: un nome che non combacia entra a zero.
+Se un alimento non è in elenco scrivilo come sta nel documento:
+${alimenti.join(' · ')}`
+    : ''
+  const istruzioni = nota?.trim()
+    ? `⚠️ REGOLE DELL'ATLETA PER QUESTO PIANO — AUTORITATIVE, applicale ALLA LETTERA e vincono
+su qualunque regola generale più sotto quando la contraddicono.
+«««
+${nota.trim()}
+»»»
+
+Regole generali, da usare dove quelle sopra non dicono nulla:
+
+${PROMPT_DIETA}${elenco}`
+    : PROMPT_DIETA + elenco
+
+  const raw = await leggiDocumento(file, apiKey, istruzioni, SCHEMA_DIETA)
+  const piano = sanDieta(raw, alimenti)
+  if (!piano.slots.length) throw new Error('Nessun pasto riconosciuto nel documento.')
+  return piano
+}
+
+const TIPI_PASTO = ['colazione', 'pranzo', 'cena', 'spuntino']
+
+function sanDieta(raw: unknown, alimenti: string[]): MealPlan {
+  const canonico = new Map(alimenti.map((n) => [chiaveNome(n), n]))
+  const r = (raw ?? {}) as Record<string, unknown>
+  const slots: MealPlan['slots'] = []
+  for (const sl of (Array.isArray(r.slots) ? r.slots : [])) {
+    const s2 = sl as Record<string, unknown>
+    const type = TIPI_PASTO.includes(String(s2.type)) ? String(s2.type) as MealType : 'spuntino'
+    const items = (Array.isArray(s2.items) ? s2.items : [])
+      .map((x) => {
+        const it = x as Record<string, unknown>
+        const grezzo = String(it.name ?? '').trim()
+        if (!grezzo) return null
+        // stesso aggancio degli esercizi: se l'alimento esiste già, uso IL SUO nome, così
+        // le calorie si trovano invece di entrare a zero
+        return { name: canonico.get(chiaveNome(grezzo)) ?? grezzo, grams: num(it.grams, 1, 3000, 100) }
+      })
+      .filter((x): x is PlanFood => x !== null)
+    if (items.length) slots.push({ type, items })
+  }
+  return { name: String(r.name ?? 'Piano importato').slice(0, 80), slots }
 }

@@ -8,7 +8,7 @@ import {
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda, libreriaEsercizi, PUNTI_MISURA,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
-  type MealType, type Food, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
+  type MealType, type Food, type MealPlan, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
   foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
@@ -16,7 +16,7 @@ import { supa } from './data/client'
 import { serieLoggata, serieRimossa, serieModificata, sessioneChiusa, sessioneAnnullata, pending, cloudState, checkinSalvato, pesoSalvato, acquaSalvata, pastiOggiAggiornati, configSalvata, ricaricaNelCloud, pullAll, flush } from './data/sync'
 import { uploadVideo, videoUrl, deleteVideo } from './data/storage'
 import { chiamaCoach, calorieBruciate, type ChatMsg } from './ai/coach'
-import { parseSchedaFile } from './ai/parser'
+import { parseSchedaFile, parseDietaFile } from './ai/parser'
 
 // Colore per gruppo muscolare: la scheda si legge a colpo d'occhio
 const MCOLOR: Record<string, string> = {
@@ -2988,12 +2988,101 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
     pastiOggiAggiornati(nm, today())
   }
   const plan = s.mealPlan
+
+  // Import IA del piano: file tenuto da parte per poterlo rileggere con la correzione
+  const [aiDieta, setAiDieta] = useState<{ state: 'busy' } | { state: 'preview'; piano: MealPlan } | null>(null)
+  const [dietaFix, setDietaFix] = useState('')
+  const dietaFile = useRef<File | null>(null)
+  const leggiDieta = async (f: File, nota: string) => {
+    const key = s.settings.geminiKey?.trim()
+    if (!key) return toast('Serve la chiave IA: Profilo → Coach IA')
+    setAiDieta({ state: 'busy' })
+    try {
+      // l'archivio alimenti va passato: senza, un nome che non combacia entra a zero calorie
+      const alimenti = [...FOODS, ...s.customFoods].map((f2) => f2.name)
+      setAiDieta({ state: 'preview', piano: await parseDietaFile(f, key, nota, alimenti) })
+    } catch (e) {
+      toast((e as Error).message || 'Errore durante la lettura')
+      setAiDieta(null)
+    }
+  }
+  const onDietaFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    dietaFile.current = f; setDietaFix('')
+    void leggiDieta(f, '')
+  }
+  const rileggiDieta = () => { if (dietaFile.current) void leggiDieta(dietaFile.current, dietaFix.trim()) }
+  const confermaDieta = () => {
+    if (aiDieta?.state !== 'preview') return
+    setS({ ...s, mealPlan: aiDieta.piano })
+    setAiDieta(null); setImp(false)
+    toast('Piano importato ✓')
+  }
+
   return (
     <>
       <div className="msg" style={{ marginTop: 12 }}><div className="who">Carico Coach</div>
-        Incolla o carica il tuo piano alimentare: lo trasformo in pasti pronti da spuntare ogni giorno.
-        <span className="sm mut" style={{ display: 'block', marginTop: 6 }}>Presto l'IA lo genererà e adatterà da sola.</span>
+        Manda il tuo piano alimentare — PDF, foto o testo — e lo trasformo in pasti pronti da spuntare ogni giorno.
       </div>
+
+      {/* Import IA: stessa forma di quello delle schede, PDF o foto → anteprima → conferma */}
+      <label className="ghost filebtn" style={{ marginTop: 12, borderColor: 'rgba(201,249,78,.5)', color: 'var(--lime)' }}>
+        ✨ Importa da PDF o foto con l'IA
+        <input type="file" accept=".pdf,image/*" onChange={onDietaFile} style={{ display: 'none' }} />
+      </label>
+
+      {aiDieta && (
+        <div className="overlay" onClick={() => { if (aiDieta.state === 'preview') setAiDieta(null) }}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            {aiDieta.state === 'busy' ? (
+              <div style={{ padding: '46px 20px', textAlign: 'center' }}>
+                <div className="prstar" style={{ fontSize: 34, color: 'var(--lime)' }}>✨</div>
+                <div style={{ fontWeight: 800, marginTop: 10 }}>Sto leggendo il piano…</div>
+                <p className="sm mut" style={{ marginTop: 8 }}>Pasti, alimenti e quantità vengono tradotti in grammi.</p>
+              </div>
+            ) : (<>
+              <div className="bc" style={{ margin: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="crumb">Controlla prima di importare</div>
+                  <div className="bt1">{aiDieta.piano.name}</div>
+                </div>
+                <button className="pen" onClick={() => setAiDieta(null)}>✕</button>
+              </div>
+              <div className="plist" style={{ borderTop: 0 }}>
+                {aiDieta.piano.slots.map((sl, i) => (
+                  <div className="card" key={i} style={{ marginTop: 10 }}>
+                    <div className="cardh"><b>{MEAL_TYPES.find((t) => t.key === sl.type)?.label ?? sl.type}</b></div>
+                    <div className="cardh-div" />
+                    {sl.items.map((it, j) => {
+                      const f = foodLookup(it.name, s.customFoods)
+                      return (
+                        <div className="set" key={j}>
+                          <b className="sm">{it.name}</b>
+                          <span className="meta num" style={{ marginLeft: 'auto' }}>
+                            {it.grams}g{/* senza corrispondenza in archivio il pasto entrerebbe a zero: meglio dirlo ORA */}
+                            {f ? ` · ${Math.round(f.kcal * it.grams / 100)} kcal` : <span style={{ color: 'var(--amber)' }}> · macro da inserire</span>}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+                <div className="card" style={{ marginTop: 10 }}>
+                  <div className="crumb" style={{ marginBottom: 7 }}>Non torna qualcosa?</div>
+                  <textarea className="notebox" rows={2} value={dietaFix} onChange={(e) => setDietaFix(e.target.value)}
+                    placeholder={'es. "le quantità sono a crudo" · "il secondo spuntino è pre-nanna"'} />
+                  <button className="ghost" style={{ marginTop: 8 }} disabled={!dietaFix.trim()} onClick={rileggiDieta}>
+                    ↻ Rileggi il documento con questa correzione
+                  </button>
+                </div>
+                <button style={{ marginTop: 10 }} onClick={confermaDieta}>Usa questo piano</button>
+                <div style={{ height: 20 }} />
+              </div>
+            </>)}
+          </div>
+        </div>
+      )}
 
       {plan ? (
         <>
