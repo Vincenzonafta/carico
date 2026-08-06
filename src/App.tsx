@@ -471,6 +471,38 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
   const mvEntries = Object.entries(mv).sort((a, b) => b[1] - a[1])
   const under = mvEntries.filter(([, n]) => n < 8).map(([m]) => m)
 
+  // Record degli ultimi 7 giorni: la festa li segnala sul momento e poi sparisce, qui restano
+  const prsRecenti = [...new Set(s.log.filter((l) => l.date > since).map((l) => l.date))]
+    .sort().reverse()
+    .flatMap((d) => prsForSession(s.log, d).map((ex) => ({ d, ex })))
+    .slice(0, 4)
+
+  // Giorno di riposo: propongo quello che aspetta da più tempo, non un elenco da scegliere.
+  // "Quando l'ho fatto" si ricava dall'ultima serie di un suo esercizio: i giorni allenati
+  // non sono registrati come tali da nessuna parte.
+  const prossimo = (() => {
+    if (items.length) return null
+    const sc = curScheda(s)
+    if (!sc?.days.length) return null
+    const quando = (dd: typeof sc.days[0]) => {
+      const date = s.log.filter((l) => dd.items.some((it) => it.ex === l.ex)).map((l) => l.date)
+      return date.length ? date.sort()[date.length - 1] : ''
+    }
+    const ordinati = sc.days.map((dd, i) => ({ dd, i, ultima: quando(dd) })).sort((a, b) => a.ultima.localeCompare(b.ultima))
+    return ordinati[0] ?? null
+  })()
+  const iniziaGiorno = (i: number) => {
+    // azzero l'ancora come fa "Inizia questo allenamento": è la stessa scelta esplicita
+    setS({ ...s, activeDay: i, allenamento: undefined })
+    go('allena')
+  }
+
+  const addAcqua = (ml: number) => {
+    const v = Math.max(0, wt + ml)
+    setS({ ...s, water: [...s.water.filter((x) => x.date !== today()), ...(v > 0 ? [{ date: today(), ml: v }] : [])] })
+    acquaSalvata(today(), v)
+  }
+
   const h = new Date().getHours()
   // il nome sta in Profilo e non lo usava nessuno: qui costa una riga e cambia il tono
   const hi = (h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera')
@@ -564,9 +596,35 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
       ) : (
         <div className="card">
           <p className="sm mut" style={{ margin: 0, lineHeight: 1.6 }}>Giorno di riposo.</p>
-          <button className="ghost" style={{ marginTop: 10 }} onClick={() => go('schede')}>Scegli un giorno da allenare</button>
+          {prossimo && (<>
+            <div className="sh" style={{ marginTop: 12 }}>
+              <span className="exbar" style={{ background: mcolor(prossimo.dd.items[0]?.muscle ?? ''), minHeight: 40 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="crumb">Quello che aspetta da più tempo</div>
+                <b>{prossimo.dd.name}</b>
+                <div className="meta num">{prossimo.dd.items.length} esercizi · {prossimo.ultima
+                  ? `ultima volta ${Math.floor((Date.now() - new Date(prossimo.ultima + 'T12:00').getTime()) / 86400000)} gg fa`
+                  : 'mai fatto'}</div>
+              </div>
+            </div>
+            <button style={{ marginTop: 10 }} onClick={() => iniziaGiorno(prossimo.i)}>▶ Allena {prossimo.dd.name}</button>
+          </>)}
+          <button className="ghost" style={{ marginTop: 8 }} onClick={() => go('schede')}>Scegli un altro giorno</button>
         </div>
       )}
+
+      {prsRecenti.length > 0 && (<>
+        <h2>Record recenti</h2>
+        <div className="card" style={{ padding: '4px 12px' }}>
+          {prsRecenti.map(({ d, ex }) => (
+            <div className="set" key={d + ex}>
+              <span className="prtag">★</span>
+              <b className="sm">{ex}</b>
+              <span className="meta num" style={{ marginLeft: 'auto' }}>{d === today() ? 'oggi' : d.slice(5).split('-').reverse().join('/')}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
 
       {/* CHECK-IN: azione quotidiana. Fatto = riepilogo compatto; da fare = aperto e sollecitato. */}
       <h2>Come stai oggi</h2>
@@ -615,7 +673,16 @@ function Oggi({ s, setS, go }: { s: State; setS: (u: State) => void; go: (t: Tab
           <MacroRing v={tot.carbs} max={s.target.carbs} color="var(--amber)" label="Carbo" />
           <MacroRing v={tot.fat} max={s.target.fat} color="#A78BFA" label="Grassi" />
         </div>
-        <div style={{ marginTop: 12 }}><Bar v={wt} max={wg} color="var(--lime)" label="Acqua" unit="ml" /></div>
+        {/* stopPropagation: i tasti aggiungono acqua, non aprono il tab Cibo */}
+        <div style={{ marginTop: 12 }} onClick={(e) => e.stopPropagation()}>
+          <Bar v={wt} max={wg} color="var(--lime)" label="Acqua" unit="ml" />
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            {[250, 500].map((ml) => (
+              <button key={ml} className="ghost mini" style={{ flex: 1 }} onClick={() => addAcqua(ml)}>+{ml} ml</button>
+            ))}
+            {wt > 0 && <button className="ghost mini" style={{ flex: 'none', padding: '0 12px' }} onClick={() => addAcqua(-250)}>−</button>}
+          </div>
+        </div>
       </div>
 
       {/* SETTIMANA: i numeri di contorno, in fondo. Volume-per-gruppo e andamento peso NON
