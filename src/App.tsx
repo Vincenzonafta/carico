@@ -8,8 +8,9 @@ import {
   streak, level, badges, totalWorkouts, totalTonnage, volume, isTimed,
   curScheda, curDay, curItems, allItems, MUSCLES, EXERCISES, lookupMuscle, parseScheda, libreriaEsercizi, PUNTI_MISURA,
   type SetType, type SetSpec, SET_TYPES, setTypeLabel, itemReps, itemSetCount, schemeSummary, schemeTag, makePreset,
-  type MealType, type Food, type MealPlan, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
+  type MealType, type Food, type MealPlan, type PlanFood, MEAL_TYPES, FOOD_CATS, FOODS, mealFromFood,
   foodLookup, planItemToMeal, parseMealPlan, fetchFoodByBarcode, searchFoods,
+  giornoPiano, indiceGiorno, spostaPiano, migraPiano,
 } from './coach'
 import { DialogHost, confirmDlg, promptDlg, toast } from './dialog'
 import { supa } from './data/client'
@@ -107,8 +108,10 @@ const wasFresh = !localStorage.getItem(LS) // all'avvio non c'è dato locale: de
 // Ricostruisce lo State locale dai dati scaricati dal cloud (gli eventi vincono sul seed).
 function statoDaCloud(cloud: NonNullable<Awaited<ReturnType<typeof pullAll>>>): State {
   const base = emptyState()
+  const dati = (cloud.dati ?? {}) as Partial<State>
   return {
-    ...base, ...(cloud.dati ?? {}),
+    ...base, ...dati,
+    mealPlan: dati.mealPlan ? migraPiano(dati.mealPlan) : null, // il cloud può avere piani senza giorni
     log: cloud.log, checkins: cloud.checkins,
     checkin: cloud.checkins.find((c) => c.date === today()) ?? base.checkin,
     meals: cloud.meals, body: cloud.body, water: cloud.water,
@@ -128,6 +131,7 @@ function load(): State {
       const m = { ...base, ...p } // i campi nuovi ereditano i default
       m.target = { ...base.target, ...(p.target ?? {}) } // carbo/grassi per i salvataggi vecchi
       m.settings = { ...base.settings, ...(p.settings ?? {}) }
+      m.mealPlan = p.mealPlan ? migraPiano(p.mealPlan) : null // piani senza giorni -> un giorno solo
       return m
     }
   } catch { /* storage non disponibile */ }
@@ -2757,8 +2761,25 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
     setS({ ...s, meals: nm })
     pastiOggiAggiornati(nm, d) // rimpiazza nel cloud i pasti di quel giorno
   }
-  const addPlanItem = (type: MealType, item: { name: string; grams: number }) => {
-    const nm = [...s.meals, planItemToMeal(item, type, s.customFoods)]
+  // Riga del piano toccata. Due casi chiedono conferma prima di registrare: le alternative
+  // (sceglie l'atleta, non noi) e le quantità che il documento lascia aperte.
+  const addPlanItem = async (type: MealType, item: PlanFood) => {
+    let scelto = item
+    let grammi = item.grams
+    if (item.alt?.length || item.grams == null) {
+      const opzioni = [item, ...(item.alt ?? [])]
+      const campi = [
+        ...(item.alt?.length ? [{ label: 'Alimento', options: opzioni.map((o) => o.name) }] : []),
+        { label: 'Grammi', placeholder: item.grams != null ? String(item.grams) : 'es. 150' },
+      ]
+      const v = await promptDlg(item.alt?.length ? 'Scegli e pesa' : 'Quanti grammi?', campi)
+      if (!v) return
+      if (item.alt?.length) scelto = opzioni.find((o) => o.name === v[0]) ?? item
+      const g = parseInt(v[v.length - 1], 10)
+      grammi = Number.isFinite(g) && g > 0 ? g : scelto.grams
+      if (grammi == null) return toast('Serve una quantità per registrare il pasto')
+    }
+    const nm = [...s.meals, planItemToMeal(scelto, type, s.customFoods, grammi ?? undefined)]
     setS({ ...s, meals: nm })
     pastiOggiAggiornati(nm, today())
   }
@@ -2819,7 +2840,7 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
       {MEAL_TYPES.map(({ key, label }) => {
         const ms = s.meals.map((m, i) => ({ m, i })).filter((x) => x.m.date === today() && (x.m.type ?? 'spuntino') === key)
         const kc = ms.reduce((a, x) => a + (x.m.kcal || 0), 0)
-        const proposed = (s.mealPlan?.slots.find((sl) => sl.type === key)?.items ?? [])
+        const proposed = (s.mealPlan ? giornoPiano(s.mealPlan).slots.find((sl) => sl.type === key)?.items ?? [] : [])
           .filter((it) => {
             const resolved = (foodLookup(it.name, s.customFoods)?.name ?? it.name).toLowerCase()
             return !ms.some((x) => x.m.name.toLowerCase() === it.name.toLowerCase() || x.m.name.toLowerCase() === resolved)
@@ -2845,8 +2866,13 @@ function CiboDiario({ s, setS }: { s: State; setS: (u: State) => void }) {
               {proposed.map((it, j) => (
                 <div className="set proposed" key={'p' + j} onClick={() => addPlanItem(key, it)}>
                   <div style={{ minWidth: 0 }}>
-                    <div className="ex" style={{ fontSize: 14 }}>{it.name}<span className="mut sm num"> · {it.grams}g</span></div>
-                    <div className="meta">dal piano · tocca per aggiungere</div>
+                    <div className="ex" style={{ fontSize: 14 }}>{it.name}
+                      <span className="mut sm num"> · {it.grams == null ? 'q.tà libera' : it.grams + 'g'}</span></div>
+                    <div className="meta">
+                      {it.alt?.length ? `oppure ${it.alt.map((a) => a.name).join(' · ')} — tocca per scegliere`
+                        : it.grams == null ? 'dal piano · tocca e metti i grammi'
+                          : 'dal piano · tocca per aggiungere'}
+                    </div>
                   </div>
                   <span className="chev" style={{ color: 'var(--lime)', marginLeft: 'auto' }}>＋</span>
                 </div>
@@ -2980,18 +3006,26 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
   const applyToday = () => {
     if (!s.mealPlan) return
     const already = new Set(s.meals.filter((m) => m.date === today()).map((m) => m.name.toLowerCase()))
-    const add = s.mealPlan.slots.flatMap((sl) => sl.items.filter((it) => !already.has(it.name.toLowerCase()))
-      .map((it) => planItemToMeal(it, sl.type, s.customFoods)))
-    if (!add.length) return toast('Pasti del piano già presenti oggi')
+    const restanti = giornoPiano(s.mealPlan).slots.flatMap((sl) => sl.items
+      .filter((it) => !already.has(it.name.toLowerCase())).map((it) => ({ it, type: sl.type })))
+    // gli alimenti a quantità aperta li salto: il documento non dice quanti grammi e
+    // metterceli d'ufficio sarebbe inventare la dieta
+    const add = restanti.filter((x) => x.it.grams != null).map((x) => planItemToMeal(x.it, x.type, s.customFoods))
+    const aperti = restanti.length - add.length
+    if (!add.length) return toast(aperti ? 'Restano solo alimenti a quantità libera: aggiungili tu' : 'Pasti del piano già presenti oggi')
     const nm = [...s.meals, ...add]
-    setS({ ...s, meals: nm }); toast(`${add.length} pasti aggiunti a oggi`)
+    setS({ ...s, meals: nm })
+    toast(`${add.length} pasti aggiunti a oggi` + (aperti ? ` · ${aperti} a quantità libera` : ''))
     pastiOggiAggiornati(nm, today())
   }
   const plan = s.mealPlan
+  const gi = plan ? indiceGiorno(plan) : 0
+  const giorno = plan ? plan.giorni[gi] : null
 
   // Import IA del piano: file tenuto da parte per poterlo rileggere con la correzione
   const [aiDieta, setAiDieta] = useState<{ state: 'busy' } | { state: 'preview'; piano: MealPlan } | null>(null)
   const [dietaFix, setDietaFix] = useState('')
+  const [prevG, setPrevG] = useState(0) // giorno mostrato nell'anteprima
   const dietaFile = useRef<File | null>(null)
   const leggiDieta = async (f: File, nota: string) => {
     const key = s.settings.geminiKey?.trim()
@@ -3050,7 +3084,19 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
                 <button className="pen" onClick={() => setAiDieta(null)}>✕</button>
               </div>
               <div className="plist" style={{ borderTop: 0 }}>
-                {aiDieta.piano.slots.map((sl, i) => (
+                {aiDieta.piano.giorni.length > 1 && (
+                  <div className="daytabs" style={{ marginTop: 10 }}>
+                    {aiDieta.piano.giorni.map((g, i) => (
+                      <button key={i} className={'daytab' + (i === prevG ? ' on' : '')} onClick={() => setPrevG(i)}>{g.nome}</button>
+                    ))}
+                  </div>
+                )}
+                {(aiDieta.piano.giorni[Math.min(prevG, aiDieta.piano.giorni.length - 1)]?.nota) && (
+                  <p className="sm" style={{ color: 'var(--amber)', margin: '10px 2px 0' }}>
+                    {aiDieta.piano.giorni[Math.min(prevG, aiDieta.piano.giorni.length - 1)].nota}
+                  </p>
+                )}
+                {(aiDieta.piano.giorni[Math.min(prevG, aiDieta.piano.giorni.length - 1)]?.slots ?? []).map((sl, i) => (
                   <div className="card" key={i} style={{ marginTop: 10 }}>
                     <div className="cardh"><b>{MEAL_TYPES.find((t) => t.key === sl.type)?.label ?? sl.type}</b></div>
                     <div className="cardh-div" />
@@ -3058,16 +3104,27 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
                       const f = foodLookup(it.name, s.customFoods)
                       return (
                         <div className="set" key={j}>
-                          <b className="sm">{it.name}</b>
-                          <span className="meta num" style={{ marginLeft: 'auto' }}>
-                            {it.grams}g{/* senza corrispondenza in archivio il pasto entrerebbe a zero: meglio dirlo ORA */}
-                            {f ? ` · ${Math.round(f.kcal * it.grams / 100)} kcal` : <span style={{ color: 'var(--amber)' }}> · macro da inserire</span>}
+                          <div style={{ minWidth: 0 }}>
+                            <b className="sm">{it.name}</b>
+                            {it.alt?.length ? <div className="meta">oppure {it.alt.map((a) => a.name).join(' · ')}</div> : null}
+                          </div>
+                          <span className="meta num" style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                            {it.grams == null
+                              ? <span style={{ color: 'var(--amber)' }}>quantità libera</span>
+                              : <>{it.grams}g{/* senza corrispondenza in archivio il pasto entrerebbe a zero: meglio dirlo ORA */}
+                                {f ? ` · ${Math.round(f.kcal * it.grams / 100)} kcal` : <span style={{ color: 'var(--amber)' }}> · macro da inserire</span>}</>}
                           </span>
                         </div>
                       )
                     })}
                   </div>
                 ))}
+                {aiDieta.piano.note && (
+                  <div className="card" style={{ marginTop: 10 }}>
+                    <div className="crumb" style={{ marginBottom: 6 }}>Regole del piano</div>
+                    <p className="sm mut" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{aiDieta.piano.note}</p>
+                  </div>
+                )}
                 <div className="card" style={{ marginTop: 10 }}>
                   <div className="crumb" style={{ marginBottom: 7 }}>Non torna qualcosa?</div>
                   <textarea className="notebox" rows={2} value={dietaFix} onChange={(e) => setDietaFix(e.target.value)}
@@ -3090,7 +3147,19 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
             <div style={{ flex: 1, minWidth: 0 }}><div className="crumb">Piano attivo</div><div className="bt1">{plan.name}</div></div>
             <button className="pen" onClick={() => setS({ ...s, mealPlan: null })}>✕</button>
           </div>
-          {plan.slots.map((sl, i) => (
+          {/* Striscia dei giorni: compare solo se il piano ne ha più d'uno, così una dieta
+              fissa resta identica a prima. Le frecce riallineano la rotazione quando sgarri. */}
+          {plan.giorni.length > 1 && (
+            <div className="card giornibar" style={{ marginTop: 12 }}>
+              <button className="pen" onClick={() => setS({ ...s, mealPlan: spostaPiano(plan, -1) })} title="Giorno precedente">‹</button>
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
+                <div style={{ fontWeight: 800 }}>{giorno!.nome}</div>
+                <div className="sm mut">{gi + 1} di {plan.giorni.length}{giorno!.nota ? ' · ' + giorno!.nota : ''}</div>
+              </div>
+              <button className="pen" onClick={() => setS({ ...s, mealPlan: spostaPiano(plan, 1) })} title="Giorno successivo">›</button>
+            </div>
+          )}
+          {giorno!.slots.map((sl, i) => (
             <section className="mealsec" key={i}>
               <div className="mealhead"><span className="mh-t">{MEAL_TYPES.find((t) => t.key === sl.type)?.label}</span></div>
               <div className="card mealcard">
@@ -3098,14 +3167,27 @@ function PianoView({ s, setS }: { s: State; setS: (u: State) => void }) {
                   const f = foodLookup(it.name, s.customFoods)
                   return (
                     <div className="set" key={j}>
-                      <div style={{ minWidth: 0 }}><div className="ex" style={{ fontSize: 14 }}>{it.name}<span className="mut sm num"> · {it.grams}g</span></div>
-                        <div className="meta num">{f ? `${Math.round(f.kcal * it.grams / 100)} kcal` : 'alimento non riconosciuto'}</div></div>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ex" style={{ fontSize: 14 }}>{it.name}
+                          <span className="mut sm num"> · {it.grams == null ? 'q.tà libera' : it.grams + 'g'}</span></div>
+                        <div className="meta num">
+                          {it.alt?.length ? 'oppure ' + it.alt.map((a) => a.name).join(' · ')
+                            : it.grams == null ? 'quantità da decidere'
+                              : f ? `${Math.round(f.kcal * it.grams / 100)} kcal` : 'alimento non riconosciuto'}
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
               </div>
             </section>
           ))}
+          {plan.note && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="crumb" style={{ marginBottom: 6 }}>Regole del piano</div>
+              <p className="sm mut" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{plan.note}</p>
+            </div>
+          )}
           <button style={{ marginTop: 14 }} onClick={applyToday}>Aggiungi i pasti di oggi</button>
           <button className="ghost" style={{ marginTop: 8 }} onClick={() => { setImp(true); setText('') }}>Importa un altro piano</button>
         </>

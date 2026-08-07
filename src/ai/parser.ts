@@ -1,7 +1,7 @@
 // Parser IA delle schede: da PDF/foto al formato dell'app, con la chiave dell'utente (BYOK).
 // Structured output (responseSchema): Gemini NON può produrre un formato diverso dal nostro.
 // A valle c'è comunque l'ANTEPRIMA obbligatoria: si importa solo dopo conferma dell'utente.
-import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType, type MealPlan, type MealType, type PlanFood } from '../coach'
+import { lookupMuscle, MUSCLES, type Scheda, type PlanItem, type SetSpec, type SetType, type MealPlan, type MealType, type PlanFood, type PlanSlot, type GiornoPiano } from '../coach'
 import { postGemini } from './gemini'
 
 const PROMPT = `Estrai TUTTO il programma di allenamento da questo documento (tabella, foto o testo, in qualsiasi lingua).
@@ -231,48 +231,86 @@ function sanItem(it: Record<string, unknown>, canonico: Map<string, string>): Pl
 // `foodLookup` non trova le calorie e il pasto entra a zero. Per questo l'elenco degli
 // alimenti conosciuti va nel prompt, e a valle c'è comunque il confronto morbido.
 const PROMPT_DIETA = `Estrai il piano alimentare da questo documento (tabella, foto o testo, in qualsiasi lingua).
+Il piano è una LISTA DI GIORNI che si ripete a ciclo. Tu TRASCRIVI quello che c'è scritto:
+non progettare una dieta, non correggerla, non completarla. Se il documento non dice una cosa,
+non la dice nemmeno il tuo risultato.
 
-REGOLE:
-- Ogni pasto del piano diventa uno "slot" con il suo "type", esattamente uno tra:
-  colazione, pranzo, cena, spuntino. Merenda/snack/break → spuntino.
-- Se ci sono più spuntini (mattina, pomeriggio, sera) mettili come slot "spuntino" separati,
-  nell'ordine del documento.
-- "grams" SEMPRE in grammi, numero intero. Converti tu le misure casalinghe:
-  1 uovo medio ≈ 60, 1 cucchiaio di olio ≈ 10, 1 cucchiaino ≈ 5, 1 fetta di pane ≈ 30,
-  1 tazza di latte ≈ 250, 1 vasetto di yogurt ≈ 125, 1 scatoletta di tonno ≈ 80 (sgocciolato).
-  Se il documento dà un peso "da crudo" o "da secco", usa QUEL numero.
-- ALTERNATIVE ("oppure", "o in alternativa", "/"): prendi SOLO la prima opzione.
-- Quantità a intervallo ("100-150 g"): usa il valore più alto.
-- Se una quantità non è indicata, metti 100 e non inventare.
-- Integratori, caffè, acqua e tisane SENZA calorie: saltali, non sono alimenti da tracciare.
-- "name" = il nome dell'alimento da solo, senza quantità e senza note di preparazione
+QUANTI GIORNI:
+- Se tutti i giorni sono uguali (un unico schema di pasti): UN SOLO giorno, nome "Ogni giorno".
+- Se il documento distingue i giorni (lunedì, martedì… oppure "giorno 1, 2, 3"): un giorno per
+  ciascuno, nell'ordine del documento, con il nome che usa il documento.
+- Se una quantità RUOTA su un numero fisso di giorni ("carboidrati: 300, 150, 50, 50, 0 poi
+  ricominci"): fai UN GIORNO PER OGNI VALORE della rotazione — qui 5 giorni. I pasti sono gli
+  stessi in tutti, cambia solo quel valore, che scrivi nella "nota" del giorno ("carbo: 150 g").
+- Se giorni diversi hanno pasti diversi, ripeti i pasti per intero in ogni giorno.
+
+DENTRO IL GIORNO:
+- Ogni pasto diventa uno "slot" con il suo "type", esattamente uno tra: colazione, pranzo,
+  cena, spuntino. Merenda/snack/break → spuntino. Più spuntini = più slot "spuntino" separati.
+- Un pasto che rimanda a un altro ("cena idem pranzo", "spuntino 2 come lo spuntino 1"):
+  copia per intero gli alimenti del pasto a cui rimanda.
+- "name" = il nome dell'alimento da solo, senza quantità né preparazione
   ("Petto di pollo alla piastra 150g" → name "Petto di pollo", grams 150).
-- NON inventare pasti o alimenti che non ci sono nel documento.`
+- Integratori, caffè, acqua e tisane SENZA calorie: saltali, non sono alimenti da tracciare.
+
+QUANTITÀ — la regola più importante:
+- "grams" in grammi, numero intero. Converti le misure casalinghe: 1 uovo medio ≈ 60,
+  1 cucchiaio di olio ≈ 10, 1 cucchiaino ≈ 5, 1 fetta di pane ≈ 30, 1 tazza di latte ≈ 250,
+  1 vasetto di yogurt ≈ 125, 1 scatoletta di tonno ≈ 80 (sgocciolato).
+  Se il documento dà un peso "da crudo" o "da secco", usa QUEL numero.
+- Quantità a intervallo ("100-150 g"): usa il valore più alto.
+- Se il documento NON indica la quantità ("+ carbo", "verdure a piacere"): metti grams NULL.
+  MAI un numero inventato: è una dieta scritta da un professionista e la quantità la
+  decide l'atleta. Un numero plausibile ma falso è l'errore peggiore che puoi fare qui.
+
+ALTERNATIVE ("oppure", "o in alternativa", "/", opzioni elencate come scelte del pasto):
+- Metti la prima come alimento e TUTTE le altre in "alt". Non buttarle via: è l'atleta
+  che sceglie ogni giorno quale usare.
+
+Metti in "note" le regole generali che non sono pasti (olio a crudo, verdure vietate,
+litri d'acqua, sale, "nessuno sgarro"…), copiate dal documento.`
+
+const CIBO_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    grams: { type: 'integer', nullable: true },
+  },
+  required: ['name'],
+}
 
 const SCHEMA_DIETA = {
   type: 'object',
   properties: {
     name: { type: 'string' },
-    slots: {
+    note: { type: 'string' },
+    giorni: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['colazione', 'pranzo', 'cena', 'spuntino'] },
-          items: {
+          nome: { type: 'string' },
+          nota: { type: 'string' },
+          slots: {
             type: 'array',
             items: {
               type: 'object',
-              properties: { name: { type: 'string' }, grams: { type: 'integer' } },
-              required: ['name', 'grams'],
+              properties: {
+                type: { type: 'string', enum: ['colazione', 'pranzo', 'cena', 'spuntino'] },
+                items: {
+                  type: 'array',
+                  items: { ...CIBO_SCHEMA, properties: { ...CIBO_SCHEMA.properties, alt: { type: 'array', items: CIBO_SCHEMA } } },
+                },
+              },
+              required: ['type', 'items'],
             },
           },
         },
-        required: ['type', 'items'],
+        required: ['nome', 'slots'],
       },
     },
   },
-  required: ['name', 'slots'],
+  required: ['name', 'giorni'],
 }
 
 export async function parseDietaFile(file: File, apiKey: string, nota?: string, alimenti: string[] = []): Promise<MealPlan> {
@@ -296,7 +334,7 @@ ${PROMPT_DIETA}${elenco}`
 
   const raw = await leggiDocumento(file, apiKey, istruzioni, SCHEMA_DIETA)
   const piano = sanDieta(raw, alimenti)
-  if (!piano.slots.length) throw new Error('Nessun pasto riconosciuto nel documento.')
+  if (!piano.giorni.length) throw new Error('Nessun pasto riconosciuto nel documento.')
   return piano
 }
 
@@ -305,21 +343,42 @@ const TIPI_PASTO = ['colazione', 'pranzo', 'cena', 'spuntino']
 function sanDieta(raw: unknown, alimenti: string[]): MealPlan {
   const canonico = new Map(alimenti.map((n) => [chiaveNome(n), n]))
   const r = (raw ?? {}) as Record<string, unknown>
-  const slots: MealPlan['slots'] = []
-  for (const sl of (Array.isArray(r.slots) ? r.slots : [])) {
-    const s2 = sl as Record<string, unknown>
-    const type = TIPI_PASTO.includes(String(s2.type)) ? String(s2.type) as MealType : 'spuntino'
-    const items = (Array.isArray(s2.items) ? s2.items : [])
-      .map((x) => {
-        const it = x as Record<string, unknown>
-        const grezzo = String(it.name ?? '').trim()
-        if (!grezzo) return null
-        // stesso aggancio degli esercizi: se l'alimento esiste già, uso IL SUO nome, così
-        // le calorie si trovano invece di entrare a zero
-        return { name: canonico.get(chiaveNome(grezzo)) ?? grezzo, grams: num(it.grams, 1, 3000, 100) }
-      })
-      .filter((x): x is PlanFood => x !== null)
-    if (items.length) slots.push({ type, items })
+
+  // stesso aggancio degli esercizi: se l'alimento esiste già in archivio uso IL SUO nome,
+  // così `foodLookup` trova le calorie invece di far entrare il pasto a zero
+  const cibo = (x: unknown, conAlt: boolean): PlanFood | null => {
+    const it = (x ?? {}) as Record<string, unknown>
+    const grezzo = String(it.name ?? '').trim()
+    if (!grezzo) return null
+    // grams assente/nullo = quantità aperta, e ci resta: qui non si inventano numeri
+    const g = it.grams == null ? null : num(it.grams, 1, 3000, 100)
+    const alt = conAlt && Array.isArray(it.alt)
+      ? it.alt.map((a) => cibo(a, false)).filter((a): a is PlanFood => a !== null)
+      : []
+    return { name: canonico.get(chiaveNome(grezzo)) ?? grezzo, grams: g, ...(alt.length ? { alt } : {}) }
   }
-  return { name: String(r.name ?? 'Piano importato').slice(0, 80), slots }
+
+  const giorni: GiornoPiano[] = []
+  for (const gr of (Array.isArray(r.giorni) ? r.giorni : [])) {
+    const g2 = (gr ?? {}) as Record<string, unknown>
+    const slots: PlanSlot[] = []
+    for (const sl of (Array.isArray(g2.slots) ? g2.slots : [])) {
+      const s2 = (sl ?? {}) as Record<string, unknown>
+      const type = TIPI_PASTO.includes(String(s2.type)) ? String(s2.type) as MealType : 'spuntino'
+      const items = (Array.isArray(s2.items) ? s2.items : [])
+        .map((x) => cibo(x, true))
+        .filter((x): x is PlanFood => x !== null)
+      if (items.length) slots.push({ type, items })
+    }
+    if (slots.length) giorni.push({
+      nome: String(g2.nome ?? `Giorno ${giorni.length + 1}`).slice(0, 40),
+      ...(g2.nota ? { nota: String(g2.nota).slice(0, 200) } : {}),
+      slots,
+    })
+  }
+  return {
+    name: String(r.name ?? 'Piano importato').slice(0, 80),
+    ...(r.note ? { note: String(r.note).slice(0, 1000) } : {}),
+    giorni,
+  }
 }

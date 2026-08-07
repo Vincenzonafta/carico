@@ -462,13 +462,48 @@ export function foodLookup(name: string, extra: Food[] = []): Food | null {
 }
 
 // --- Piani alimentari: import da testo/JSON (la stessa struttura che l'IA produrrà) ---
-export type PlanFood = { name: string; grams: number }
-export type MealPlan = { name: string; slots: { type: MealType; items: PlanFood[] }[] }
+// Un piano è una LISTA DI GIORNI che si ripete: 1 giorno = dieta fissa, 7 = settimanale,
+// 5 = rotazione a 5 giorni. Nessuna "modalità": giorni.length fa già tutto da solo.
+// grams null = quantità che il documento non dichiara ("+ carbo", "verdure a piacere").
+// Deve restare null: se fosse un numero, qualcuno dovrebbe inventarlo, e quel qualcuno
+// sarebbe l'IA che riscrive una dieta scritta da un professionista.
+export type PlanFood = { name: string; grams: number | null; alt?: PlanFood[] }
+export type PlanSlot = { type: MealType; items: PlanFood[] }
+export type GiornoPiano = { nome: string; nota?: string; slots: PlanSlot[] }
+export type MealPlan = {
+  name: string
+  dal?: string          // da quando parte il conteggio dei giorni (default: primo import)
+  giorni: GiornoPiano[]
+  note?: string         // regole libere del documento (olio a crudo, no peperoni…)
+}
 
-export function planItemToMeal(item: PlanFood, type: MealType, extra: Food[] = []): Meal {
+// Quale giorno del piano tocca a `date`. I piani a un giorno solo rispondono sempre 0,
+// quindi una dieta fissa non è un caso speciale: viene gratis.
+// Le date sono sempre in UTC, come `today()`: mescolare i due fusi faceva scivolare la
+// rotazione di un giorno in più a ogni freccia, a est di Greenwich.
+const giorniUTC = (d: string) => Date.parse(d + 'T00:00:00Z') / 86400000
+
+export function indiceGiorno(p: MealPlan, date = today()): number {
+  const n = p.giorni.length
+  if (n < 2) return 0
+  const g = giorniUTC(date) - giorniUTC(p.dal ?? date)
+  if (!Number.isFinite(g)) return 0
+  return ((g % n) + n) % n // il resto in JS è negativo per le date prima di `dal`
+}
+
+export const giornoPiano = (p: MealPlan, date = today()): GiornoPiano => p.giorni[indiceGiorno(p, date)]
+
+// Sposta l'inizio del piano di `delta` giorni: serve quando sgarri e la rotazione si sfasa.
+export function spostaPiano(p: MealPlan, delta: number, date = today()): MealPlan {
+  const base = (giorniUTC(p.dal ?? date) - delta) * 86400000
+  return { ...p, dal: new Date(base).toISOString().slice(0, 10) }
+}
+
+export function planItemToMeal(item: PlanFood, type: MealType, extra: Food[] = [], grams?: number): Meal {
+  const g = grams ?? item.grams ?? 0
   const f = foodLookup(item.name, extra)
-  return f ? mealFromFood(f, item.grams, type)
-    : { date: today(), type, name: item.name, grams: item.grams, kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  return f ? mealFromFood(f, g, type)
+    : { date: today(), type, name: item.name, grams: g, kcal: 0, protein: 0, carbs: 0, fat: 0 }
 }
 
 const mealTypeOf = (s: string): MealType | null => {
@@ -483,10 +518,13 @@ const mealTypeOf = (s: string): MealType | null => {
 export function parseMealPlan(text: string): MealPlan | null {
   const t = text.trim(); if (!t) return null
   if (t[0] === '{' || t[0] === '[') {
-    try { const j = JSON.parse(t); const p = Array.isArray(j) ? j[0] : j; if (p?.slots?.length) return p as MealPlan } catch { /* non JSON */ }
+    try {
+      const j = JSON.parse(t); const p = Array.isArray(j) ? j[0] : j
+      if (p?.giorni?.length || p?.slots?.length) return migraPiano(p)
+    } catch { /* non JSON */ }
   }
   let name = 'Piano importato'
-  const slots: MealPlan['slots'] = []
+  const slots: PlanSlot[] = []
   for (const raw of t.split(/\r?\n/)) {
     const line = raw.trim(); if (!line) continue
     if (/^#/.test(line)) { name = line.replace(/^#+\s*/, ''); continue }
@@ -501,7 +539,17 @@ export function parseMealPlan(text: string): MealPlan | null {
     })
     if (items.length) slots.push({ type, items })
   }
-  return slots.length ? { name, slots } : null
+  return slots.length ? { name, giorni: [{ nome: 'Ogni giorno', slots }] } : null
+}
+
+// I piani salvati prima dei giorni erano { name, slots }: diventano piani da un giorno solo.
+export function migraPiano(p: unknown): MealPlan | null {
+  const o = p as { name?: string; giorni?: GiornoPiano[]; slots?: PlanSlot[]; dal?: string; note?: string }
+  if (!o || typeof o !== 'object') return null
+  const name = o.name ?? 'Piano importato'
+  if (o.giorni?.length) return { ...o, name, giorni: o.giorni } as MealPlan
+  if (o.slots?.length) return { name, giorni: [{ nome: 'Ogni giorno', slots: o.slots }] }
+  return null
 }
 
 // Volume per gruppo muscolare (serie allenanti negli ultimi N giorni)
@@ -699,7 +747,14 @@ if (import.meta.env.DEV) {
   const ramp = makePreset('ramping', 5)
   console.assert(ramp.length === 4 && ramp[0].type === 'warmup', 'preset ramping')
   const mp = parseMealPlan('Colazione: Avena 80g, Uova 100g\nCena: Salmone 150g')
-  console.assert(mp?.slots.length === 2 && mp.slots[0].items[0].grams === 80, 'parser piano alimentare')
+  const g0 = mp?.giorni[0]
+  console.assert(mp?.giorni.length === 1 && g0?.slots.length === 2 && g0.slots[0].items[0].grams === 80, 'parser piano alimentare')
+  // un piano a 5 giorni ruota: stessa data + 5 = stesso giorno, e i giorni prima di `dal` non vanno in negativo
+  const ciclo: MealPlan = { name: 'c', dal: '2026-08-10', giorni: [0, 1, 2, 3, 4].map((i) => ({ nome: 'G' + i, slots: [] })) }
+  console.assert(indiceGiorno(ciclo, '2026-08-10') === 0 && indiceGiorno(ciclo, '2026-08-12') === 2
+    && indiceGiorno(ciclo, '2026-08-15') === 0 && indiceGiorno(ciclo, '2026-08-09') === 4, 'rotazione giorni piano')
+  console.assert(indiceGiorno(spostaPiano(ciclo, 1, '2026-08-10'), '2026-08-10') === 1, 'spostamento piano')
+  console.assert(migraPiano({ name: 'v', slots: [{ type: 'cena', items: [] }] })?.giorni.length === 1, 'migrazione piano senza giorni')
   console.assert(planItemToMeal({ name: 'Salmone', grams: 200 }, 'cena').kcal === 416, 'plan item -> meal con macro')
   console.assert(itemReps({ ex: 'x', sets: 4, reps: 8, rest: 0, muscle: '', scheme: ramp }) === 5, 'itemReps salta il warmup')
 }
